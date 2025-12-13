@@ -1,5 +1,7 @@
 # EV Tycoon - 充电站经营模拟游戏
 
+🎮 **在线游玩**: [https://ni1o1.github.io/EV_tycoon/](https://ni1o1.github.io/EV_tycoon/)
+
 一个基于HTML5 Canvas的互动式充电站经营模拟游戏，玩家需要在100天内经营管理自己的充电站，应对各种挑战并实现盈利。
 
 ## 游戏特色
