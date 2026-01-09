@@ -808,6 +808,7 @@ let modalOpenCount = 0;
 let myChart = null;
 let loanConfig = { type: 'installment' }; // 'installment' (等额本息) or 'principal' (等额本金)
 let currentLevel = 0; // 当前选择的关卡
+let unlockedLevels = []; // 已解锁的关卡
 
 function getInitialState() {
     return {
@@ -856,6 +857,12 @@ function selectOption(type, val) {
 }
 
 function selectLevel(level) {
+    // 检查关卡是否已解锁
+    if (level > 0 && !isLevelUnlocked(level)) {
+        alert('请先通过前面的关卡！');
+        return;
+    }
+
     currentLevel = level;
     document.querySelectorAll('.level-card').forEach(el => el.classList.remove('border-slate-900', 'shadow-lg'));
     event.currentTarget.classList.add('border-slate-900', 'shadow-lg');
@@ -1316,11 +1323,27 @@ function showGameOver(victory) {
             icon = "🏆";
             desc = `恭喜你完成了"新手起步"关卡！存活了 ${state.day} 天。`;
             color = "text-green-600";
-        } else if (currentLevel > 0) {
+            // 解锁下一关
+            unlockLevel(2);
+        } else if (currentLevel === 2) {
             title = "🎉 关卡完成！";
             icon = "🏆";
-            desc = `恭喜你完成了"${state.levelName}"关卡！存活了 ${state.day} 天。`;
+            desc = `恭喜你完成了"标准挑战"关卡！存活了 ${state.day} 天。`;
             color = "text-blue-600";
+            // 解锁下一关
+            unlockLevel(3);
+        } else if (currentLevel === 3) {
+            title = "🎉 关卡完成！";
+            icon = "🏆";
+            desc = `恭喜你完成了"超充狂热"关卡！存活了 ${state.day} 天。`;
+            color = "text-yellow-600";
+            // 解锁下一关
+            unlockLevel(4);
+        } else if (currentLevel === 4) {
+            title = "🎉 全部通关！";
+            icon = "👑";
+            desc = `恭喜你通关了所有关卡！你是真正的充电站大亨！`;
+            color = "text-purple-600";
         } else {
             title = "🎉 商业传奇！";
             icon = "🏆";
@@ -2249,7 +2272,62 @@ function setSpeed(ms) {
     updateUI();
 }
 
+// 加载已解锁的关卡
+function loadUnlockedLevels() {
+    const saved = localStorage.getItem('ev_tycoon_unlocked_levels');
+    if (saved) {
+        unlockedLevels = JSON.parse(saved);
+    } else {
+        // 默认解锁第一关
+        unlockedLevels = [1];
+    }
+}
+
+// 保存已解锁的关卡
+function saveUnlockedLevels() {
+    localStorage.setItem('ev_tycoon_unlocked_levels', JSON.stringify(unlockedLevels));
+}
+
+// 解锁新关卡
+function unlockLevel(level) {
+    if (!unlockedLevels.includes(level)) {
+        unlockedLevels.push(level);
+        saveUnlockedLevels();
+    }
+}
+
+// 检查关卡是否已解锁
+function isLevelUnlocked(level) {
+    return unlockedLevels.includes(level);
+}
+
+// 更新关卡选择界面的显示状态
+function updateLevelSelectUI() {
+    // 检查每个关卡的解锁状态并更新UI
+    for (let i = 1; i <= 4; i++) {
+        const levelCard = document.querySelector(`[onclick="selectLevel(${i})"]`);
+        if (levelCard) {
+            if (isLevelUnlocked(i)) {
+                levelCard.classList.remove('opacity-50', 'cursor-not-allowed');
+                levelCard.style.pointerEvents = 'auto';
+            } else {
+                levelCard.classList.add('opacity-50', 'cursor-not-allowed');
+                levelCard.style.pointerEvents = 'none';
+            }
+        }
+    }
+}
+
+// 初始化游戏
+loadUnlockedLevels();
+updateLevelSelectUI();
+
+// 确保打开关卡选择界面
+console.log('Opening level select modal');
 openModal('level-select-modal');
+
+// 确保其他模态框是关闭的
+closeModal('start-modal');
 </script>
 </body>
 </html>
