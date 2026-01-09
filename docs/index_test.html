@@ -194,7 +194,9 @@ button,
 </head>
 <body>
 
-    <div class="scrollable-content">
+    <!-- 游戏主界面容器 - 在选择关卡前隐藏 -->
+    <div id="game-main-container" class="hidden">
+        <div class="scrollable-content">
         <!-- 第一行 -->
         <div class="flex gap-2 shrink-0">
             <div class="w-1/3 stat-card border-t-4 border-green-500 relative overflow-hidden">
@@ -417,6 +419,8 @@ button,
         </div>
     </button>
 </div>
+        </div>
+    </div>
     </div>
 
     <!-- Modals -->
@@ -881,6 +885,9 @@ function selectLevel(level) {
 }
 
 function startLevelGame(level) {
+    // 显示游戏主界面
+    document.getElementById('game-main-container').classList.remove('hidden');
+
     // 根据关卡设置游戏参数
     if (level === 1) {
         // 关卡1：新手起步
@@ -1016,6 +1023,9 @@ function initChart() {
 function restartGame() {
     if (state.timer) clearTimeout(state.timer);
     closeModal('game-over-modal');
+
+    // 隐藏游戏主界面
+    document.getElementById('game-main-container').classList.add('hidden');
 
     // 如果是关卡模式，返回关卡选择界面
     if (currentLevel > 0) {
@@ -2321,6 +2331,12 @@ function updateLevelSelectUI() {
 // 初始化游戏
 loadUnlockedLevels();
 updateLevelSelectUI();
+
+// 初始状态设置为暂停
+state.paused = true;
+
+// 确保游戏主界面隐藏
+document.getElementById('game-main-container').classList.add('hidden');
 
 // 确保打开关卡选择界面
 console.log('Opening level select modal');
