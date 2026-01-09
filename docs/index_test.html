@@ -190,6 +190,14 @@ button,
             color: #94a3b8;
             border-color: transparent;
         }
+
+        /* 游戏主容器样式 */
+        #game-main-container {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            width: 100%;
+        }
     </style>
 </head>
 <body>
@@ -965,7 +973,17 @@ function startLevelGame(level) {
 }
 
 function startGame() {
+    console.log('Starting game in free mode...');
     closeModal('start-modal');
+
+    // 显示游戏主界面（自由模式）
+    console.log('Showing game main container...');
+    document.getElementById('game-main-container').classList.remove('hidden');
+
+    // 设置当前关卡为0（自由模式）
+    currentLevel = 0;
+
+    console.log('Initializing game state...');
     state = getInitialState();
     state.settings = { ...selectedSettings };
     
@@ -993,8 +1011,11 @@ function startGame() {
     scheduleNextEvent();
     updateUI();
     initChart();
+
+    console.log('Resizing canvas...');
     resizeCanvas();
-    setSpeed(500); 
+
+    setSpeed(500);
     state.paused = false;
     tick();
 }
@@ -2006,25 +2027,36 @@ function updateUI() {
 }
 
 function resizeCanvas() {
+    console.log('Resizing canvas...');
     const wrapper = document.getElementById('canvas-wrapper');
+    if (!wrapper) {
+        console.error('Canvas wrapper not found!');
+        return;
+    }
+
     const dpr = window.devicePixelRatio || 1;
-    
+
     const totalChargers = state.assets.slowCharger + state.assets.fastCharger;
-    const cols = 5; 
+    const cols = 5;
     const rows = Math.ceil(totalChargers / cols);
     const minHeight = 400;
-    const requiredHeight = 110 + (rows * 85); 
+    const requiredHeight = 110 + (rows * 85);
     const displayHeight = Math.max(minHeight, requiredHeight);
-    
+
+    console.log('Getting wrapper rect...');
     const rect = wrapper.getBoundingClientRect();
+    console.log('Wrapper rect:', rect);
+
     canvas.width = rect.width * dpr;
     canvas.height = rect.height * dpr;
-    
-    ctx.setTransform(1, 0, 0, 1, 0, 0); 
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.scale(dpr, dpr);
     canvasWidth = rect.width;
     canvasHeight = rect.height;
-    
+
+    console.log('Canvas resized to:', canvasWidth, canvasHeight);
+
     if (ctx.roundRect === undefined) ctx.roundRect = function(x, y, w, h, r) { this.rect(x,y,w,h); };
     if (myChart) myChart.resize();
     draw();
@@ -2032,9 +2064,20 @@ function resizeCanvas() {
 window.addEventListener('resize', resizeCanvas);
 
 function draw() {
-    if (!canvasWidth) return;
-    if (!weatherSystem.init) initWeatherSystem(canvasWidth, canvasHeight);
-    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+    if (!canvasWidth) {
+        console.log('Canvas width not set, skipping draw');
+        return;
+    }
+    if (!weatherSystem.init) {
+        console.log('Initializing weather system...');
+        initWeatherSystem(canvasWidth, canvasHeight);
+    }
+    try {
+        ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+    } catch (e) {
+        console.error('Error clearing canvas:', e);
+        return;
+    }
     
     const h = state.hour;
     const w = state.weather;
