@@ -1,0 +1,26 @@
+{
+  "name": "ev-tycoon",
+  "version": "2.0.0",
+  "description": "EV 大亨：充电站经营模拟游戏",
+  "scripts": {
+    "build": "tailwindcss -i utilities-input.css -o docs/utilities.css --minify",
+    "test": "node --test tests/*.test.cjs",
+    "start": "python3 -m http.server 4175 --directory docs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ni1o1/EV_tycoon.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/ni1o1/EV_tycoon/issues"
+  },
+  "homepage": "https://github.com/ni1o1/EV_tycoon#readme",
+  "devDependencies": {
+    "jsdom": "^26.1.0",
+    "tailwindcss": "^3.4.19"
+  },
+  "private": true
+}
