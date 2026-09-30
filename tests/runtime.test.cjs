@@ -16,9 +16,9 @@ function boot(storage={}, seed=7){
 test('campaign initializes paused, restrictions are enforced by logic and UI, and saved game restores exact state',()=>{
  const b=boot();assert.equal(b.win.document.querySelectorAll('.mission:disabled').length,5);
  b.run('startLevelGame(1)');assert.equal(b.run('state.paused'),true);assert.equal(b.run('state.lastTickData.limit'),40);
- b.run("buyAsset('solar'); buyAsset('fastCharger'); takeLoan()");assert.equal(b.run('state.money'),5000);assert.equal(b.run('state.assets.solar'),0);
+ b.run("buyAsset('solar'); buyAsset('fastCharger'); takeLoan()");assert.equal(b.run('state.money'),1800);assert.equal(b.run('state.assets.solar'),0);
  b.run("buyAsset('slowCharger'); adjustPrice(.1); saveGame(true)");assert.equal(b.run('state.assets.slowCharger'),4);
- const saved=b.win.localStorage.getItem('ev_tycoon_save_v2');const c=boot({'ev_tycoon_save_v2':saved});c.run('resumeGame()');assert.equal(c.run('state.money'),4400);assert.equal(c.run('state.price'),1.6);assert.equal(c.run('state.assets.slowCharger'),4);assert.equal(c.run('state.paused'),true);b.close();c.close();
+ const saved=b.win.localStorage.getItem('ev_tycoon_save_v2');const c=boot({'ev_tycoon_save_v2':saved});c.run('resumeGame()');assert.equal(c.run('state.money'),1000);assert.equal(c.run('state.price'),1.6);assert.equal(c.run('state.assets.slowCharger'),4);assert.equal(c.run('state.paused'),true);b.close();c.close();
 });
 test('speed changes maintain exactly one tick timer, dialog closing respects existing pause',()=>{
  const b=boot();b.run('startLevelGame(2);setSpeed(500);setSpeed(125);setSpeed(62.5)');
@@ -28,9 +28,9 @@ test('speed changes maintain exactly one tick timer, dialog closing respects exi
  b.run('closeModal("loan-modal");closeModal("help-modal")');assert.equal(b.run('modalOpenCount'),0);b.close();
 });
 test('rent must be paid before final victory; rent and debt are included in daily history',()=>{
- const b=boot();b.run('startLevelGame(1);state.hour=23;state.minute=50;state.day=7;state.paused=false;tick()');
- assert.equal(b.run('state.day'),8);assert.equal(b.run('state.pendingRent'),300);assert.equal(b.run('state.ended'),false);
- b.run('payBill()');assert.equal(b.run('state.victoryAchieved'),true);assert.equal(b.run('isLevelUnlocked(2)'),true);assert.equal(b.run('state.history.at(-1).profit'),-340);
+ const b=boot();b.run('startLevelGame(1);state.money=3000;state.totalEnergy=1600;state.hour=23;state.minute=50;state.day=7;state.paused=false;tick()');
+ assert.equal(b.run('state.day'),8);assert.equal(b.run('state.pendingRent'),350);assert.equal(b.run('state.ended'),false);
+ b.run('payBill()');assert.equal(b.run('state.victoryAchieved'),true);assert.equal(b.run('isLevelUnlocked(2)'),true);assert.equal(b.run('state.history.at(-1).profit'),-401);
  assert.equal(b.win.localStorage.getItem('ev_tycoon_save_v2'),null);b.close();
 });
 test('missing the non-survival goal fails the mission and does not unlock next stage',()=>{
@@ -48,19 +48,30 @@ test('saved event and pending rent restore as mandatory dialogs without automati
  const b=boot();b.run('startLevelGame(2);state.pendingRent=1000;saveGame(true);resumeGame()');assert.equal(b.win.document.getElementById('bill-modal').classList.contains('hidden'),false);assert.equal(b.run('state.paused'),true);
  b.run('payBill();state.pendingEvent={title:"补贴",description:"模拟事件",icon:"+",amount:"$500"};saveGame(true);showCampaign();resumeGame()');assert.equal(b.win.document.getElementById('event-modal').classList.contains('hidden'),false);assert.equal(b.run('modalOpenCount'),1);b.run('closeEventModal()');assert.equal(b.run('state.pendingEvent'),null);b.close();
 });
-test('all six missions can finish with a simple viable strategy across deterministic weather/events',()=>{
+test('all six missions finish the reference weather scenario with real investment, energy and rent rules',()=>{
+ const {simulate,referencePlans}=require('../scripts/balance.cjs');
  const results=[];
  for(let level=1;level<=6;level++){
-  const b=boot({},level*171);b.run(`startLevelGame(${level});updatePrice(1.8);if(currentLevel===2){buyAsset('solar');buyAsset('solar')}if(currentLevel===3){buyAsset('fastCharger');buyAsset('transformer')}if(currentLevel===6){buyAsset('slowCharger');buyAsset('slowCharger');buyAsset('slowCharger')}`);
-  // Exercise the real simulation, auto-acknowledging in-game bills and events only.
-  b.run(`for(let i=0;i<7000&&!state.ended;i++){if(state.pendingRent>0)payBill();if(state.pendingEvent)closeEventModal();if(state.ended)break;state.paused=false;tick()}`);
-  const passed=b.run('state.victoryAchieved');results.push({level,money:Math.round(b.run('state.money')),energy:Math.round(b.run('state.totalEnergy')),passed});
-  assert.equal(passed,true,JSON.stringify(results));b.close();
+  const r=simulate(level,171,referencePlans[level]);results.push(r);
+  assert.equal(r.won,true,JSON.stringify(results));
  }
  console.log('Campaign results:',results);
 });
+test('idle operation cannot pass the off-grid and peak challenges across sampled weather',()=>{
+ const {simulate}=require('../scripts/balance.cjs');
+ for(const level of [4,5])for(const seed of [171,342,513,684]){
+  const r=simulate(level,seed);assert.equal(r.won,false,JSON.stringify(r));
+ }
+});
+test('cash goals and stars exclude outstanding debt and enforce all flagship requirements',()=>{
+ const b=boot();b.run('startLevelGame(6);state.money=50000;state.loan={active:true,principal:30000};state.assets.slowCharger=7;state.assets.fastCharger=5');
+ assert.equal(b.run('CAMPAIGN[5].goal(state)'),false);
+ b.run('state.loan.active=false;state.assets.fastCharger=4;state.assets.slowCharger=8');assert.equal(b.run('CAMPAIGN[5].goal(state)'),false);
+ b.run('state.assets.fastCharger=5;state.assets.slowCharger=7;state.loan={active:true,principal:18000};showGameOver(true)');assert.equal(b.run('progress[6]'),1);
+ b.close();
+});
 test('free modes reset prior restrictions and inflation without duplicate off-grid discounts',()=>{
  const b=boot();b.run("startLevelGame(1);selectedSettings={city:'gz',loc:'com',mode:'super'};startGame()");assert.equal(b.run('state.assets.slowCharger'),0);assert.equal(b.run('state.assets.fastCharger'),1);assert.equal(b.win.document.getElementById('btn-fast').disabled,false);
- b.run("selectedSettings.mode='offgrid';startGame()");assert.equal(b.run('state.currentCosts.solar'),450);assert.equal(b.run('state.batteryKwh'),100);assert.equal(b.win.document.getElementById('btn-transformer').disabled,true);
+ b.run("selectedSettings.mode='offgrid';startGame()");assert.equal(b.run('state.currentCosts.solar'),900);assert.equal(b.run('state.batteryKwh'),100);assert.equal(b.win.document.getElementById('btn-transformer').disabled,true);
  b.run("selectedSettings.mode='inflation';startGame()");assert.equal(b.run('CONFIG.inflationRate'),1.5);b.run('startLevelGame(2)');assert.equal(b.run('CONFIG.inflationRate'),1.1);assert.equal(b.win.document.getElementById('btn-slow').disabled,false);b.close();
 });

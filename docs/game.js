@@ -12,11 +12,11 @@ const LOC_CONFIG = {
 };
 
 const CONFIG = {
-    initialMoney: 3500, 
-    dailyCost: { slowCharger: 10, fastCharger: 20, solar: 10, battery: 10, transformer: 10 },
-    baseWeeklyRent: 1000,
-    rentGrowth: 250, 
-    baseCosts: { slowCharger: 600, fastCharger: 1200, solar: 600, battery: 600, transformer: 600, marketing: 1500 },
+    initialMoney: 2800,
+    dailyCost: { slowCharger: 12, fastCharger: 35, solar: 8, battery: 18, transformer: 15 },
+    baseWeeklyRent: 1150,
+    rentGrowth: 220,
+    baseCosts: { slowCharger: 800, fastCharger: 2400, solar: 1200, battery: 1800, transformer: 1000, marketing: 1800 },
     inflationRate: 1.10, 
     batteryCap: 100, batteryRate: 20, solarMax: 10, 
     baseLoadLimit: 20, transformerBoost: 20, 
@@ -336,7 +336,8 @@ function showGameOver(victory, missedGoal = false) {
     const mission = CAMPAIGN.find(l => l.id === currentLevel);
     if (victory && currentLevel) {
         unlockLevel(currentLevel + 1);
-        const score = state.money >= state.initialMoney * 1.5 ? 3 : state.money >= state.initialMoney ? 2 : 1;
+        const net = campaignCash(state);
+        const score = net >= mission.stars[1] ? 3 : net >= mission.stars[0] ? 2 : 1;
         progress[currentLevel] = Math.max(progress[currentLevel] || 0, score);
         writeStorage('ev_tycoon_progress_v2', progress);
     }
@@ -551,13 +552,14 @@ function calcDailyCost() {
 }
 
 function calcWeeklyRent() {
+    const mission = CAMPAIGN.find(l => l.id === currentLevel);
+    if (mission) return mission.rent + state.weeksSurvived * mission.rentGrowth;
     let base = CONFIG.baseWeeklyRent; 
     let growth = CONFIG.rentGrowth;
-    if (state.settings.mode === 'offgrid' || state.settings.mode === 'powerlimit') { base = 500; growth = 125; }
-    if (state.settings.mode === 'luxury') { base = 2000; growth = 350; }
+    if (state.settings.mode === 'offgrid' || state.settings.mode === 'powerlimit') { base = 650; growth = 130; }
+    if (state.settings.mode === 'luxury') { base = 3000; growth = 700; }
     if (state.settings.mode === 'inflation') return Math.floor(base * Math.pow(1.3, state.weeksSurvived));
-    if (state.settings.mode === 'shark') { base = 1500; growth = 200; }
-    if (currentLevel === 1) { base = 300; growth = 0; }
+    if (state.settings.mode === 'shark') { base = 1700; growth = 250; }
     return base + (state.weeksSurvived * growth);
 }
 

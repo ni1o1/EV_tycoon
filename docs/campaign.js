@@ -1,16 +1,19 @@
+// Net cash prevents borrowing immediately before the deadline from satisfying a cash target.
+function campaignCash(s) { return s.money - (s.loan?.active ? Math.max(0, s.loan.principal || 0) : 0); }
+function cashMetric(s, target) { return `净$${(campaignCash(s)/1000).toFixed(1)}k/${target/1000}k`; }
 const CAMPAIGN = [
-    { id: 1, name: '第一度电', subtitle: '从一座小站开始', tag: '入门', days: 7, money: 5000, city: 'sh', loc: 'ind', mode: 'std', assets: { slowCharger: 3, transformer: 1 }, pool: 24,
-      objective: '运营 7 天，保持资金为正', detail: '专注慢充与定价。首周租金 $300，无随机事件；先学会留出日维护费。', lesson: '维护费每天结算；价格越高，愿意进站的客户越少。', goal: s => s.money >= 0 },
-    { id: 2, name: '阳光合伙人', subtitle: '让屋顶也赚点钱', tag: '基础', days: 14, money: 6000, city: 'sh', loc: 'ind', mode: 'std', assets: { slowCharger: 3, transformer: 1 }, pool: 28,
-      objective: '运营 14 天，建成 2 组光伏', detail: '解锁光伏、储能与银行。光伏优先供电，多余电量可进入电池。', lesson: '白天客流与光伏发电重叠，先投光伏，再考虑储能。', goal: s => s.assets.solar >= 2 },
-    { id: 3, name: '快充时代', subtitle: '效率带来新机会', tag: '进阶', days: 21, money: 7500, city: 'gz', loc: 'com', mode: 'super', assets: { slowCharger: 0, fastCharger: 2, transformer: 2 }, pool: 32,
-      objective: '运营 21 天，拥有 3 台快充', detail: '只允许快充。广州下午电价高，投资配电与储能，平衡速度和成本。', lesson: '每台快充需要 30 kW。扩建充电桩时，也要留意配电上限。', goal: s => s.assets.fastCharger >= 3 },
-    { id: 4, name: '离网绿洲', subtitle: '把阳光留到夜里', tag: '进阶', days: 14, money: 7500, city: 'sh', loc: 'res', mode: 'offgrid', assets: { slowCharger: 2, solar: 4, battery: 3, transformer: 0 }, pool: 24,
-      objective: '运营 14 天，累计交付 250 kWh', detail: '完全断开电网。以光伏与储能供电，设备采购优惠 25%，初始储能 200 kWh。', lesson: '晚间客流依赖白天储下的电；没电时不会产生虚假的充电收入。', goal: s => (s.totalEnergy || 0) >= 250 },
-    { id: 5, name: '峰谷博弈', subtitle: '有限功率，无限策略', tag: '挑战', days: 28, money: 8500, city: 'bj', loc: 'res', mode: 'powerlimit', assets: { slowCharger: 2, fastCharger: 1, transformer: 2, battery: 1 }, pool: 32,
-      objective: '运营 28 天，最终资金 ≥ $5,000', detail: '配电扩容仅 +10 kW。北京晚高峰更长，控制维护开支，利用谷电储能。', lesson: '租金准备金比账面余额更有参考价值。扩建后不要一次花光。', goal: s => s.money >= 5000 },
-    { id: 6, name: '城市旗舰', subtitle: '经营你的充电帝国', tag: '大师', days: 40, money: 12000, city: 'gz', loc: 'com', mode: 'luxury', assets: { slowCharger: 3, fastCharger: 2, transformer: 3, solar: 2, battery: 2 }, pool: 40,
-      objective: '运营 40 天，拥有 8 台充电桩', detail: '高客流伴随高租金。综合运用定价、扩建、推广和能源调度完成最后挑战。', lesson: '先把已有设备用起来，再扩建；客流、功率和现金都要跟得上。', goal: s => s.assets.slowCharger + s.assets.fastCharger >= 8 }
+    { id: 1, name: '第一度电', subtitle: '从一座小站开始', tag: '入门', days: 7, money: 1800, city: 'sh', loc: 'ind', mode: 'std', assets: { slowCharger: 3, transformer: 1 }, pool: 24, rent: 350, rentGrowth: 0, stars: [2600, 3200],
+      objective: '7 天交付 1,600 kWh，净资金 ≥ $2,300', short: '7 天 · 1,600 kWh + $2,300', detail: '专注慢充与定价。首周租金 $350，无随机事件；付清租金后，交付量与净资金均需达标。', lesson: '维护费每天结算；价格越高，愿意进站的客户越少。', goal: s => campaignCash(s) >= 2300 && (s.totalEnergy || 0) >= 1600, metric: s => `${Math.floor(s.totalEnergy || 0)}/1600kWh · ${cashMetric(s,2300)}` },
+    { id: 2, name: '阳光合伙人', subtitle: '让屋顶也赚点钱', tag: '基础', days: 14, money: 3200, city: 'sh', loc: 'ind', mode: 'std', assets: { slowCharger: 3, transformer: 1 }, pool: 28, rent: 900, rentGrowth: 180, stars: [3500, 4500],
+      objective: '14 天建成 2 组光伏，净资金 ≥ $2,000', short: '14 天 · 2 组光伏 + $2,000', detail: '解锁光伏、储能与银行。光伏 $1,200/组，储能 $1,800/组；两次租金分别为 $900、$1,080。', lesson: '先让光伏直接供车；储能投资更高，不必把全部余款都投入设备。', goal: s => s.assets.solar >= 2 && campaignCash(s) >= 2000, metric: s => `光伏${s.assets.solar}/2 · ${cashMetric(s,2000)}` },
+    { id: 3, name: '快充时代', subtitle: '效率带来新机会', tag: '进阶', days: 21, money: 3800, city: 'gz', loc: 'com', mode: 'super', assets: { slowCharger: 0, fastCharger: 2, transformer: 2 }, pool: 32, rent: 1200, rentGrowth: 220, stars: [6500, 8500],
+      objective: '21 天拥有 3 台快充，净资金 ≥ $4,500', short: '21 天 · 3 台快充 + $4,500', detail: '只允许快充。快充 $2,400/台，日维护 $35；扩建要同时考虑配电、广州峰时电费和租金。', lesson: '每台快充额定 30 kW。先检查能源曲线与配电上限，再决定下一笔投资。', goal: s => s.assets.fastCharger >= 3 && campaignCash(s) >= 4500, metric: s => `快充${s.assets.fastCharger}/3 · ${cashMetric(s,4500)}` },
+    { id: 4, name: '离网绿洲', subtitle: '把阳光留到夜里', tag: '进阶', days: 14, money: 2800, city: 'sh', loc: 'res', mode: 'offgrid', assets: { slowCharger: 2, solar: 2, battery: 1, transformer: 0 }, pool: 24, rent: 650, rentGrowth: 130, stars: [3000, 4500],
+      objective: '14 天交付 2,200 kWh，净资金 ≥ $500', short: '14 天 · 2,200 kWh + $500', detail: '完全断开电网。初始 2 组光伏、1 组储能，仅存电 50 kWh；采购优惠 25%。阴雨天与晚高峰考验储能准备。', lesson: '晚间充电依赖白天存下的电。观察缺电时段，平衡发电量与储能容量。', goal: s => (s.totalEnergy || 0) >= 2200 && campaignCash(s) >= 500, metric: s => `${Math.floor(s.totalEnergy || 0)}/2200kWh · ${cashMetric(s,500)}` },
+    { id: 5, name: '峰谷博弈', subtitle: '有限功率，无限策略', tag: '挑战', days: 28, money: 3600, city: 'bj', loc: 'res', mode: 'powerlimit', assets: { slowCharger: 2, fastCharger: 1, transformer: 2, battery: 1 }, pool: 32, rent: 900, rentGrowth: 200, stars: [12500, 16000],
+      objective: '运营 28 天，净资金 ≥ $9,000', short: '28 天 · 净资金 $9,000', detail: '配电扩容仅 +10 kW。北京晚高峰较长，每周租金递增 $200；存量设备、定价和扩建节奏共同决定结余。', lesson: '客户按进站时售价结算，可能持续充到峰时。比较整段充电成本，留好租金。', goal: s => campaignCash(s) >= 9000, metric: s => cashMetric(s,9000) },
+    { id: 6, name: '城市旗舰', subtitle: '经营你的充电帝国', tag: '大师', days: 40, money: 4500, city: 'gz', loc: 'com', mode: 'luxury', assets: { slowCharger: 3, fastCharger: 2, transformer: 3, solar: 2, battery: 2 }, pool: 40, rent: 3000, rentGrowth: 700, stars: [35000, 45000],
+      objective: '40 天建成 12 台桩，其中 5 台快充，净资金 ≥ $26,000', short: '40 天 · 12 台桩 / 5 快充 + $26k', detail: '高客流伴随高租金：首周 $3,000，每周递增 $700。需要分阶段扩建配电和充电桩，付清所有到期费用。', lesson: '扩建快充时同步检查功率瓶颈；预留租金和维护费，避免一次花光。', goal: s => s.assets.slowCharger + s.assets.fastCharger >= 12 && s.assets.fastCharger >= 5 && campaignCash(s) >= 26000, metric: s => `桩${s.assets.slowCharger+s.assets.fastCharger}/12 快${s.assets.fastCharger}/5 · ${cashMetric(s,26000)}` }
 ];
 let progress = readStorage('ev_tycoon_progress_v2', {});
 if (!progress || typeof progress !== 'object' || Array.isArray(progress)) progress = {};
@@ -36,7 +39,7 @@ function launchGame() {
     state.ended = false;
     if (state.settings.mode === 'offgrid') {
         Object.keys(state.currentCosts).forEach(k => state.currentCosts[k] = Math.floor(state.currentCosts[k] * 0.75));
-        state.batteryKwh = currentLevel === 4 ? 200 : 100;
+        state.batteryKwh = currentLevel === 4 ? 50 : 100;
     }
     if (state.settings.mode === 'rain') {
         state.weather = 'rainy'; state.forecast = 'rainy';
@@ -70,7 +73,7 @@ function renderCampaign() {
     document.getElementById('campaign-progress').style.width = `${complete / 6 * 100}%`;
     document.getElementById('mission-list').innerHTML = CAMPAIGN.map(l => {
         const unlocked = isLevelUnlocked(l.id), stars = progress[l.id] || 0;
-        const objective = { 1:'7 天 · 资金为正', 2:'14 天 · 建成 2 组光伏', 3:'21 天 · 拥有 3 台快充', 4:'14 天 · 交付 250 kWh', 5:'28 天 · 结余 $5,000', 6:'40 天 · 拥有 8 台桩' }[l.id];
+        const objective = l.short;
         return `<button type="button" class="mission ${unlocked ? '' : 'locked'} ${stars ? 'completed' : ''}" onclick="selectLevel(${l.id})" ${unlocked ? '' : 'disabled'} aria-label="第 ${l.id} 关 ${l.name}，${unlocked ? l.objective : '完成上一关后解锁'}">
             <span class="mission-no">${String(l.id).padStart(2,'0')}</span><span class="mission-top"><strong>${l.name}</strong><span class="tag">${stars ? '★'.repeat(stars) : l.tag}</span></span><span class="mission-objective">${objective}</span><span class="mission-arrow">${unlocked ? '↗' : '锁定'}</span></button>`;
     }).join('');
@@ -178,7 +181,7 @@ function updateDashboard() {
     document.getElementById('day-progress').textContent = `${Math.min(state.day - 1, days)} / ${days} 天`;
     document.getElementById('day-progress-bar').style.width = `${Math.min(100, (state.day - 1) / days * 100)}%`;
     document.getElementById('compact-goal').textContent = `${Math.min(state.day - 1, days)}/${days}天`;
-    const metric = currentLevel === 2 ? `光伏 ${state.assets.solar} / 2 组` : currentLevel === 3 ? `快充 ${state.assets.fastCharger} / 3 台` : currentLevel === 4 ? `交付 ${Math.floor(state.totalEnergy || 0)} / 250 kWh` : currentLevel === 5 ? `资金 $${Math.floor(state.money)} / $5,000` : currentLevel === 6 ? `充电桩 ${state.assets.slowCharger + state.assets.fastCharger} / 8 台` : '保持资金为正';
+    const metric = mission ? mission.metric(state) : '生存 100 天';
     document.getElementById('mission-metric').textContent = metric;
     document.getElementById('main-mission-metric').textContent = metric;
     const nextPayment = loanPayment(state.loan, LOAN_DAILY_RATE).amount;
@@ -197,7 +200,8 @@ function updateDashboard() {
     document.getElementById('ui-today-profit').textContent = `${state.currentDayProfit >= 0 ? '+' : '−'}$${Math.abs(state.currentDayProfit).toFixed(1)}`;
     document.getElementById('ui-total-energy').textContent = `${Math.round(state.totalEnergy || 0)} kWh`;
     document.getElementById('compact-battery').textContent = state.assets.battery ? `储能 ${Math.round(state.batteryKwh)} kWh` : '';
-    document.getElementById('compact-profit').textContent = `今日 ${state.currentDayProfit < 0 ? '−' : '+'}$${Math.abs(state.currentDayProfit).toFixed(0)}`;
+    document.getElementById('ui-tick-revenue').textContent = `+$${Number(d.revenue || 0).toFixed(2)}`;
+    document.getElementById('ui-tick-cost').textContent = `−$${Number(d.cost || 0).toFixed(2)}`;
     const margin = state.price - currentGridPrice();
     document.getElementById('price-note').textContent = state.settings.mode === 'offgrid' ? '离网供电 · 光伏优先，储能补充' : `每度电价差 ${margin < 0 ? '−' : '+'}$${Math.abs(margin).toFixed(2)} · 不含维护与租金`;
     document.getElementById('price-note').classList.toggle('danger', margin < 0);
@@ -218,7 +222,7 @@ function updateDashboard() {
     }
     document.getElementById('btn-loan').disabled = currentLevel === 1;
     document.getElementById('card-loan-status').disabled = currentLevel === 1;
-    document.getElementById('mission-detail').textContent = mission?.detail || '按自己的节奏投资，体验不同城市、地段与挑战模式。';
+    document.getElementById('mission-detail').textContent = mission ? `${mission.detail} 净资金＝余额减未还贷款本金；通关一星，净资金 $${mission.stars[0].toLocaleString('en-US')} 两星，$${mission.stars[1].toLocaleString('en-US')} 三星。` : '按自己的节奏投资，体验不同城市、地段与挑战模式。';
     const speeds = { '0': 0, '1': 500, '4': 125, '8': 62.5 };
     for (const [id, ms] of Object.entries(speeds)) {
         const active = state.paused ? ms === 0 : ms === state.gameSpeed;

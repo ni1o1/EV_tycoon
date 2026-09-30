@@ -29,3 +29,16 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .price-range{flex:1;min-width:0;display:flex;flex-direction:column;height:31px;justify-content:center}.price-range input{height:20px}.price-ticks{display:flex;justify-content:space-between;color:#8f9ba7;font-size:7px;line-height:9px;padding:0 6px}
 @media(max-height:650px){.mission-link{padding:2px 0}.price-range{height:25px}.price-range input{height:17px}.price-ticks{font-size:6px;line-height:8px}}
 @media(max-width:350px) and (max-height:650px){.hud{height:51px}}
+
+.tick-cash-card{gap:0!important}.tick-cash-card>span{font-size:7px;line-height:1.2}.tick-cash-card>div{display:flex;align-items:center;justify-content:space-between;gap:2px;line-height:1.12}.tick-cash-card small{font-size:7px;color:#86969c}.tick-cash-card #ui-tick-revenue{color:#29896e;font-size:10px}.tick-cash-card #ui-tick-cost{color:#c06e55;font-size:10px}.profit-inline{white-space:nowrap;font-size:8px;color:#718c83}.profit-inline b{color:#39896f}.pricing-line>span{color:#738a9c}.pricing-line>span small{font-size:8px}.pricing-line #ui-grid-price{color:#b67a38}
+@media(max-height:650px){.tick-cash-card>span{font-size:6px;line-height:1.1}.tick-cash-card>div{line-height:1.05}.tick-cash-card #ui-tick-revenue,.tick-cash-card #ui-tick-cost{font-size:8px}.tick-cash-card small{font-size:6px}.pricing-line>span{font-size:8px}.pricing-line>span small{font-size:6px}.profit-inline{font-size:7px}}
+
+.mission-inline{font-variant-numeric:tabular-nums;font-size:8px}.tick-cash-card{padding-left:5px!important;padding-right:5px!important}.operating-stats{grid-template-columns:1.25fr .85fr .9fr 1fr}
+@media(max-height:650px){.tick-cash-card>span,.tick-cash-card>div{line-height:1}.mission-inline{font-size:7px}.operating-stats b{font-size:9px}}
+
+.pricing-line,.pricing-line label,.pricing-line #price-display{line-height:1}
+
+.pricing-line>label,.pricing-line>span{display:flex;align-items:center;gap:4px;height:100%;line-height:1}.pricing-line #ui-grid-price,.pricing-line #price-display{display:inline-block;line-height:1!important}
+.pricing-line{height:24px}.pricing-line #ui-grid-price,.pricing-line #price-display{line-height:1.2!important}
+@media(max-height:650px){.pricing-line{height:22px}.pricing-line #price-display{font-size:16px}}
+@media(max-width:350px) and (max-height:650px){.game-screen,.game-controls{gap:2.5px}}

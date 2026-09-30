@@ -1,12 +1,13 @@
 {
   "name": "ev-tycoon",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "EV 大亨：充电站经营模拟游戏",
   "scripts": {
     "build": "tailwindcss -i utilities-input.css -o docs/utilities.css --minify",
     "test": "node --test tests/*.test.cjs",
     "start": "python3 -m http.server 4175 --directory docs",
-    "test:layout": "playwright test"
+    "test:layout": "playwright test",
+    "balance": "node scripts/balance.cjs"
   },
   "repository": {
     "type": "git",
