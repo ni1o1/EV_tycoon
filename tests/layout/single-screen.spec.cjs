@@ -5,7 +5,7 @@ async function assertSingleScreen(page, game=false){
  expect(dimensions.scrollHeight).toBeLessThanOrEqual(dimensions.height);expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.width);
  const selectors=game?['.hud','.operating-stats','.game-status','.station-stage','.energy-panel','.pricing','.asset-grid','.bottom-controls']:['.home-actions','#mission-list'];
  for(const selector of selectors){const box=await page.locator(selector).boundingBox();expect(box,selector).not.toBeNull();expect(box.y,selector).toBeGreaterThanOrEqual(0);expect(box.y+box.height,selector).toBeLessThanOrEqual(dimensions.height+1);expect(box.x+box.width,selector).toBeLessThanOrEqual(dimensions.width+1)}
- for(const selector of game?['.asset-button','.operating-stats>div','.operating-stats>button','.game-status','.pricing-line','.power-strip']:['.mission']){
+ for(const selector of game?['.asset-button','.hud-card','.operating-stats>div','.operating-stats>button','.game-status','.pricing-line','.power-strip']:['.mission']){
   const fitting=await page.locator(selector).evaluateAll(elements=>elements.every(el=>el.scrollHeight<=el.clientHeight+1&&el.scrollWidth<=el.clientWidth+1));expect(fitting,selector+' content must fit, not be clipped').toBeTruthy();
  }
  if(game){const stage=await page.locator('.station-stage').boundingBox();expect(stage.height).toBeGreaterThan(65)}
