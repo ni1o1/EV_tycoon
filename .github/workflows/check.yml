@@ -16,5 +16,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:layout
       - run: npm run build
       - run: git diff --exit-code -- docs/utilities.css

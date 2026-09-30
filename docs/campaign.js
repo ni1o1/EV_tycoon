@@ -25,7 +25,7 @@ function toast(message) {
     clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.add('hidden'), 3500);
 }
 function launchGame() {
-    document.querySelectorAll('[id$="-modal"]').forEach(el => el.classList.add('hidden'));
+    document.querySelectorAll('[id$="-modal"]').forEach(el => { el.classList.add('hidden'); el.removeAttribute('aria-modal'); });
     modalOpenCount = 0;
     document.getElementById('game-main-container').classList.remove('hidden');
     document.getElementById('campaign-screen').classList.add('hidden');
@@ -51,7 +51,7 @@ function launchGame() {
     state.paused = true;
     updateUI(); saveGame(true);
     document.getElementById('speed-1').focus({ preventScroll: true });
-    toast('准备就绪。先查看经营目标，再点击 1× 开始营业。');
+    toast('点击 1× 开始营业');
 }
 function currentGridPrice() {
     if (state.settings.mode === 'offgrid') return 0;
@@ -70,22 +70,22 @@ function renderCampaign() {
     document.getElementById('campaign-progress').style.width = `${complete / 6 * 100}%`;
     document.getElementById('mission-list').innerHTML = CAMPAIGN.map(l => {
         const unlocked = isLevelUnlocked(l.id), stars = progress[l.id] || 0;
+        const objective = { 1:'7 天 · 资金为正', 2:'14 天 · 建成 2 组光伏', 3:'21 天 · 拥有 3 台快充', 4:'14 天 · 交付 250 kWh', 5:'28 天 · 结余 $5,000', 6:'40 天 · 拥有 8 台桩' }[l.id];
         return `<button type="button" class="mission ${unlocked ? '' : 'locked'} ${stars ? 'completed' : ''}" onclick="selectLevel(${l.id})" ${unlocked ? '' : 'disabled'} aria-label="第 ${l.id} 关 ${l.name}，${unlocked ? l.objective : '完成上一关后解锁'}">
-            <span class="mission-no">${String(l.id).padStart(2, '0')}</span>
-            <span class="mission-body"><span class="mission-top"><strong>${l.name}</strong><span class="tag">${stars ? '已通关 ' + '★'.repeat(stars) : l.tag}</span></span><span class="mission-sub">${l.subtitle}</span><span class="mission-objective">${l.objective}</span><span class="mission-meta">${CITY_CONFIG[l.city].name} · ${LOC_CONFIG[l.loc].name} · 启动资金 $${l.money.toLocaleString('en-US')}</span></span>
-            <span class="mission-arrow">${unlocked ? '↗' : '锁定'}</span></button>`;
+            <span class="mission-no">${String(l.id).padStart(2,'0')}</span><span class="mission-top"><strong>${l.name}</strong><span class="tag">${stars ? '★'.repeat(stars) : l.tag}</span></span><span class="mission-objective">${objective}</span><span class="mission-arrow">${unlocked ? '↗' : '锁定'}</span></button>`;
     }).join('');
     const saved = readStorage('ev_tycoon_save_v2', null);
     document.getElementById('resume-game').classList.toggle('hidden', !validSave(saved));
     if (validSave(saved)) document.getElementById('resume-detail').textContent = `${saved.state.levelName || '自由经营'} · 第 ${saved.state.day} 天`;
 }
 function showCampaign() {
+    clearTimeout(toastTimer); document.getElementById('toast').classList.add('hidden');
     if (!state.ended && !document.getElementById('game-main-container').classList.contains('hidden')) { setSpeed(0); modalWasRunning = false; saveGame(true); }
     clearTimeout(state.timer);
     state.paused = true;
     document.getElementById('game-main-container').classList.add('hidden');
     document.getElementById('campaign-screen').classList.remove('hidden');
-    document.querySelectorAll('[id$="-modal"]').forEach(el => el.classList.add('hidden'));
+    document.querySelectorAll('[id$="-modal"]').forEach(el => { el.classList.add('hidden'); el.removeAttribute('aria-modal'); });
     modalOpenCount = 0;
     renderCampaign();
     window.scrollTo(0, 0);
@@ -132,15 +132,43 @@ function resumeGame() {
         document.getElementById('ev-amt').textContent = ev.amount;
         openModal('event-modal');
     }
-    toast('存档已恢复，点击速度按钮继续营业。');
+    toast('已恢复，点击 1× 继续');
 }
 function retryCurrentGame() {
     closeModal('game-over-modal');
     if (currentLevel) startLevelGame(currentLevel);
     else { selectedSettings = { ...state.settings }; startGame(); }
 }
-function openHelp() { openModal('help-modal'); }
-function closeHelp() { closeModal('help-modal'); resumeAfterModal(); }
+let helpPage = 0;
+const HELP_PAGES = [
+    ['开始经营', '点击 1× 开始，4× / 8× 加速。\nⅡ 暂停，空格键也可暂停。\n调价和购买设备都在屏幕底部。'],
+    ['让资金转起来', '售价高，愿意进站的客户会减少。\n电费实时扣，维护与还款每天扣。\n留好租金；详细收支点「经营」查看。'],
+    ['能源与关卡', '光伏优先供电，储能低价充、高价放。\n离网时没电就限速，配电不足也会限速。\n点关卡名称查看目标，达成后解锁下一关。']
+];
+function openHelp() { helpPage = 0; renderHelp(); openModal('help-modal'); }
+function renderHelp() {
+    document.getElementById('help-title').textContent = HELP_PAGES[helpPage][0];
+    document.getElementById('help-text').textContent = HELP_PAGES[helpPage][1];
+    document.getElementById('help-page').textContent = `${helpPage + 1} / ${HELP_PAGES.length}`;
+    document.getElementById('help-prev').disabled = helpPage === 0;
+    document.getElementById('help-next').disabled = helpPage === HELP_PAGES.length - 1;
+}
+function changeHelp(delta) { helpPage = Math.max(0, Math.min(HELP_PAGES.length - 1, helpPage + delta)); renderHelp(); }
+function closeHelp() { closePanel('help-modal'); }
+function openGoal() { openModal('goal-modal'); }
+function closePanel(id) { closeModal(id); resumeAfterModal(); }
+function openDetails() { openModal('details-modal'); switchDetails('finance'); }
+function switchDetails(view) {
+    for (const kind of ['finance', 'energy']) {
+        document.getElementById(kind + '-view').classList.toggle('hidden', kind !== view);
+        document.getElementById(kind + '-tab').setAttribute('aria-selected', String(kind === view));
+    }
+    if (view === 'energy') { if (myChart) myChart.resize(); else initChart(); }
+}
+function openBankFromDetails() {
+    if (currentLevel === 1) return;
+    openLoanModal(); closeModal('details-modal');
+}
 function updateDashboard() {
     const mission = CAMPAIGN.find(l => l.id === currentLevel);
     document.getElementById('station-context').textContent = `${CITY_CONFIG[state.settings.city].name} / ${LOC_CONFIG[state.settings.loc].name}`;
@@ -149,6 +177,7 @@ function updateDashboard() {
     const days = state.targetDays || CONFIG.targetDays;
     document.getElementById('day-progress').textContent = `${Math.min(state.day - 1, days)} / ${days} 天`;
     document.getElementById('day-progress-bar').style.width = `${Math.min(100, (state.day - 1) / days * 100)}%`;
+    document.getElementById('compact-goal').textContent = `${Math.min(state.day - 1, days)}/${days}天`;
     const metric = currentLevel === 2 ? `光伏 ${state.assets.solar} / 2 组` : currentLevel === 3 ? `快充 ${state.assets.fastCharger} / 3 台` : currentLevel === 4 ? `交付 ${Math.floor(state.totalEnergy || 0)} / 250 kWh` : currentLevel === 5 ? `资金 $${Math.floor(state.money)} / $5,000` : currentLevel === 6 ? `充电桩 ${state.assets.slowCharger + state.assets.fastCharger} / 8 台` : '保持资金为正';
     document.getElementById('mission-metric').textContent = metric;
     const nextPayment = loanPayment(state.loan, LOAN_DAILY_RATE).amount;
@@ -163,6 +192,8 @@ function updateDashboard() {
     document.getElementById('ui-occupancy').textContent = `${state.cars.length} / ${state.assets.slowCharger + state.assets.fastCharger} 正在充电`;
     document.getElementById('ui-today-profit').textContent = `${state.currentDayProfit >= 0 ? '+' : '−'}$${Math.abs(state.currentDayProfit).toFixed(1)}`;
     document.getElementById('ui-total-energy').textContent = `${Math.round(state.totalEnergy || 0)} kWh`;
+    document.getElementById('compact-battery').textContent = state.assets.battery ? `储能 ${Math.round(state.batteryKwh)} kWh` : '';
+    document.getElementById('compact-profit').textContent = `今日 ${state.currentDayProfit < 0 ? '−' : '+'}$${Math.abs(state.currentDayProfit).toFixed(0)}`;
     const margin = state.price - currentGridPrice();
     document.getElementById('price-note').textContent = state.settings.mode === 'offgrid' ? '离网供电 · 光伏优先，储能补充' : `每度电价差 ${margin < 0 ? '−' : '+'}$${Math.abs(margin).toFixed(2)} · 不含维护与租金`;
     document.getElementById('price-note').classList.toggle('danger', margin < 0);
@@ -195,7 +226,7 @@ function updateDashboard() {
     document.getElementById('ui-overload-msg').classList.toggle('hidden', !overload);
     document.getElementById('ui-overload-msg').textContent = state.settings.mode === 'offgrid' ? '光储不足 · 充电限速' : '配电过载 · 充电限速';
     const history = state.history || [];
-    document.getElementById('ledger-list').innerHTML = history.length ? history.slice(-5).reverse().map(h => `<div class="ledger-row"><span>第 ${h.day} 天</span><span class="${h.profit < 0 ? 'danger' : ''}">${h.profit >= 0 ? '+' : '−'}$${Math.abs(h.profit).toFixed(1)}</span></div>`).join('') : '<p class="empty-note">首日结算后，收支会显示在这里。</p>';
+    document.getElementById('ledger-list').innerHTML = history.length ? history.slice(-3).reverse().map(h => `<div class="ledger-row"><span>第 ${h.day} 天</span><span class="${h.profit < 0 ? 'danger' : ''}">${h.profit >= 0 ? '+' : '−'}$${Math.abs(h.profit).toFixed(1)}</span></div>`).join('') : '<p class="empty-note">首日结算后，收支会显示在这里。</p>';
 }
 window.addEventListener('pagehide', () => saveGame(true));
 document.addEventListener('visibilitychange', () => {
@@ -206,7 +237,9 @@ document.addEventListener('keydown', e => {
         e.preventDefault(); setSpeed(state.paused ? state.lastGameSpeed : 0);
     }
     if (e.key === 'Escape') {
-        if (!document.getElementById('help-modal').classList.contains('hidden')) closeHelp();
+        if (!document.getElementById('goal-modal').classList.contains('hidden')) closePanel('goal-modal');
+        else if (!document.getElementById('details-modal').classList.contains('hidden')) closePanel('details-modal');
+        else if (!document.getElementById('help-modal').classList.contains('hidden')) closeHelp();
         else if (!document.getElementById('loan-modal').classList.contains('hidden')) closeLoanModal();
         else if (!document.getElementById('start-modal').classList.contains('hidden')) showCampaign();
     }

@@ -90,22 +90,12 @@ function getInitialState() {
 // ================= UI & Setup =================
 
 function selectOption(type, val) {
+    const choices = { city: ['sh','gz','bj'], loc: ['ind','com','res'], mode: ['std','super','offgrid','ghost','luxury','powerlimit','inflation','rain','shark'] };
+    if (!choices[type]?.includes(val)) return;
     selectedSettings[type] = val;
-    document.querySelectorAll(`.${type}-card`).forEach(el => el.setAttribute('aria-pressed', String(el.dataset.val === val)));
-    document.querySelectorAll(`.${type}-card`).forEach(el => el.classList.remove('selected'));
-    document.querySelector(`.${type}-card[data-val="${val}"]`).classList.add('selected');
-
-    if (type === 'city') {
-        const desc = { sh: "白天有超长平价期(11-18点)，容错率高，适合光伏。", gz: "下午(14-19点)电价极高，商业区慎选！晚上较便宜。", bj: "晚高峰(17-22点)电价极贵且长，居民区必须配储能！" };
-        const descEl = document.getElementById('city-desc');
-        descEl.innerText = desc[val];
-        if(val === 'sh') descEl.className = "text-xs text-green-600 mt-1 font-bold";
-        else if(val === 'bj') descEl.className = "text-xs text-red-500 mt-1 font-bold";
-        else descEl.className = "text-xs text-slate-400 mt-1";
-    } else if (type === 'loc') {
-        const desc = { res: "17–22 点客流集中，夜间储能很重要。", com: "白天与晚间都有客流，18–21 点更旺。", ind: "工作日早高峰最旺，午后逐渐回落。" };
-        document.getElementById('loc-desc').innerText = desc[val];
-    }
+    document.getElementById(type + '-select').value = val;
+    if (type === 'city') document.getElementById('city-desc').textContent = { sh: '日间平价时段长，适合新手。', gz: '下午电价高，留意储能。', bj: '晚高峰较长，留意夜间成本。' }[val];
+    if (type === 'loc') document.getElementById('loc-desc').textContent = { ind: '早高峰客流较旺。', com: '日间和晚间都有客流。', res: '晚间客流集中。' }[val];
 }
 
 function selectLevel(level) {
@@ -150,7 +140,8 @@ function startGame() {
 
 function initChart() {
     const chartDom = document.getElementById('chart-container');
-    if (myChart) myChart.dispose();
+    if (myChart) { myChart.dispose(); myChart = null; }
+    if (!chartDom.clientWidth) return;
     myChart = echarts.init(chartDom);
     const option = {
         backgroundColor: 'rgba(255, 255, 255, 0.7)',
@@ -340,7 +331,7 @@ function checkEndGame() {
 
 function showGameOver(victory, missedGoal = false) {
     state.paused = true; state.ended = true; clearTimeout(state.timer);
-    document.querySelectorAll('[id$="-modal"]').forEach(el => { if (el.id !== 'game-over-modal') el.classList.add('hidden'); });
+    document.querySelectorAll('[id$="-modal"]').forEach(el => { if (el.id !== 'game-over-modal') { el.classList.add('hidden'); el.removeAttribute('aria-modal'); } });
     modalOpenCount = 0;
     const mission = CAMPAIGN.find(l => l.id === currentLevel);
     if (victory && currentLevel) {
@@ -687,7 +678,7 @@ function spawnFloatText(txt, col) {
 }
 
 function updateUI() {
-    document.getElementById('ui-money').innerText = `$${state.money.toFixed(2)}`;
+    document.getElementById('ui-money').innerText = state.money >= 1000000 ? `$${(state.money / 1000000).toFixed(1)}M` : `$${Math.floor(state.money).toLocaleString('en-US')}`;
     
     const dCost = calcDailyCost();
     document.getElementById('ui-daily-cost').innerText = `-$${dCost.toFixed(2)}`;
@@ -728,9 +719,9 @@ function updateUI() {
         const val = state.lastDayProfit.toFixed(2);
         const sign = state.lastDayProfit >= 0 ? '+' : '';
         const color = state.lastDayProfit >= 0 ? 'text-green-600' : 'text-red-500';
-        lastProfitEl.innerHTML = `昨日: <span class="${color}">${sign}$${val}</span>`;
+        lastProfitEl.innerHTML = `<span class="${color}">${sign}$${val}</span>`;
     } else {
-        lastProfitEl.innerText = "昨日: --";
+        lastProfitEl.innerText = "--";
     }
 
     const h = state.hour.toString().padStart(2,'0');
@@ -854,74 +845,78 @@ function updateUI() {
 
 function resizeCanvas() {
     const wrapper = document.getElementById('canvas-wrapper');
-    if (!wrapper || wrapper.clientWidth === 0) return;
+    if (!wrapper || wrapper.clientWidth === 0 || wrapper.clientHeight === 0) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     canvasWidth = wrapper.clientWidth;
-    const cols = Math.max(2, Math.floor((canvasWidth - 60) / 110));
-    const total = state.assets.slowCharger + state.assets.fastCharger;
-    canvasHeight = Math.max(330, 170 + Math.ceil(Math.max(6, total) / cols) * 114);
-    wrapper.style.height = canvasHeight + 'px';
-    canvas.width = canvasWidth * dpr; canvas.height = canvasHeight * dpr;
+    canvasHeight = wrapper.clientHeight;
+    canvas.width = Math.round(canvasWidth * dpr);
+    canvas.height = Math.round(canvasHeight * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    if (myChart) myChart.resize();
+    if (myChart && !document.getElementById('energy-view').classList.contains('hidden')) myChart.resize();
     draw();
 }
 window.addEventListener('resize', resizeCanvas);
+if (typeof ResizeObserver !== 'undefined') new ResizeObserver(resizeCanvas).observe(document.getElementById('canvas-wrapper'));
 function draw() {
-    if (!canvasWidth) return;
-    const night = state.hour < 6 || state.hour >= 19;
+    if (!canvasWidth || !canvasHeight) return;
     const W = canvasWidth, H = canvasHeight;
+    const night = state.hour < 6 || state.hour >= 19;
     ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = night ? '#273a36' : '#e6ebdf'; ctx.fillRect(0, 0, W, H);
-    const rect = (x, y, w, h, r, color) => { ctx.fillStyle = color; ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.fill(); };
-    const text = (s, x, y, color, size = 11) => { ctx.font = `500 ${size}px "PingFang SC", sans-serif`; ctx.fillStyle = color; ctx.fillText(s, x, y); };
-    // Site perimeter, trees and service building.
-    ctx.strokeStyle = night ? '#41564e' : '#cbd5c4'; ctx.lineWidth = 1;
+    ctx.fillStyle = night ? '#283c33' : '#e5ebdf'; ctx.fillRect(0, 0, W, H);
+    const rect = (x, y, w, h, r, color) => { ctx.fillStyle = color; ctx.beginPath(); ctx.roundRect(x, y, Math.max(0, w), Math.max(0, h), r); ctx.fill(); };
+    const text = (s, x, y, color, size = 10) => { ctx.fillStyle = color; ctx.font = `500 ${size}px "PingFang SC", sans-serif`; ctx.fillText(s, x, y); };
+    ctx.strokeStyle = night ? '#405349' : '#d1dcc9'; ctx.lineWidth = .6;
     for (let x = 0; x < W; x += 24) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
     for (let y = 0; y < H; y += 24) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
-    rect(24, 24, W - 48, 68, 10, night ? '#3d5249' : '#d0dcc9');
-    for (let x = 42; x < W - 40; x += 46) {
-        ctx.fillStyle = '#78956d'; ctx.beginPath(); ctx.arc(x, 45, 12, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#9bb68a'; ctx.beginPath(); ctx.arc(x - 3, 42, 8, 0, Math.PI * 2); ctx.fill();
+    const tall = H >= 175;
+    if (tall) {
+        const hubWidth = Math.min(W - 28, 210);
+        rect((W - hubWidth) / 2, 39, hubWidth, 34, 6, '#27493a');
+        text(`光伏 ${state.assets.solar * 10} kW  /  储能 ${Math.round(state.batteryKwh)} kWh`, (W - hubWidth) / 2 + 13, 60, '#d7e9ad', 10);
+        for (const x of [22, W - 22]) { ctx.fillStyle = '#91ad7c'; ctx.beginPath(); ctx.arc(x, 55, 11, 0, Math.PI * 2); ctx.fill(); }
     }
-    rect(W / 2 - 94, 24, 188, 62, 8, '#203f35');
-    text('EV / 能源中心', W / 2 - 68, 50, '#d5ee8b', 15);
-    text(`光伏 ${state.assets.solar * 10} kW · 储能 ${Math.round(state.batteryKwh)} kWh`, W / 2 - 78, 72, '#dbe6d7', 10);
     const types = [];
-    for (let i = 0; i < state.assets.slowCharger; i++) types.push(['slow', i]);
-    for (let i = 0; i < state.assets.fastCharger; i++) types.push(['fast', i]);
-    const cols = Math.max(2, Math.floor((W - 60) / 110));
-    const slots = Math.max(6, types.length);
-    const gap = (W - 60) / cols;
-    for (let i = 0; i < slots; i++) {
-        const x = 30 + (i % cols) * gap, y = 112 + Math.floor(i / cols) * 114;
-        const type = types[i];
-        const car = type && state.cars.find(c => c.type === type[0] && c.slot === type[1]);
-        rect(x + 2, y, gap - 12, 98, 8, type ? (night ? '#40554a' : '#f2f5ec') : (night ? '#2e443b' : '#dce4d4'));
-        ctx.setLineDash(type ? [] : [4, 4]); ctx.strokeStyle = type ? '#bccbb5' : '#adbea3';
-        ctx.strokeRect(x + 10, y + 25, gap - 28, 57); ctx.setLineDash([]);
-        if (!type) { text('待扩建', x + 24, y + 58, '#7e9274', 11); continue; }
-        const fast = type[0] === 'fast';
-        rect(x + gap / 2 - 10, y + 6, 20, 18, 3, fast ? '#eebf67' : '#709c72');
-        rect(x + gap / 2 - 6, y + 9, 12, 5, 1, '#173c30');
-        text(fast ? 'DC' : 'AC', x + 9, y + 18, fast ? '#ad7c26' : '#5d7c50', 9);
-        if (car) {
-            const carX = x + gap / 2 - 17;
-            rect(carX + 3, y + 33, 33, 46, 7, 'rgba(0,0,0,.12)');
-            rect(carX, y + 30, 33, 46, 7, fast ? '#e2b86a' : '#a5baca');
-            rect(carX + 4, y + 37, 25, 10, 3, '#35544d');
-            rect(carX + 4, y + 62, 25, 7, 2, '#35544d');
-            rect(x + 13, y + 87, gap - 32, 4, 2, '#d2dccb');
-            rect(x + 13, y + 87, (gap - 32) * Math.min(1, car.kwhReceived / car.kwhNeeded), 4, 2, '#6a9d58');
-            text(`${Math.round(car.kwhReceived / car.kwhNeeded * 100)}%`, x + gap - 36, y + 20, '#548a4a', 9);
-        } else text('可用', x + gap / 2 - 16, y + 60, '#7b8d70', 11);
+    for (const kind of ['slow', 'fast']) for (let i = 0; i < state.assets[kind + 'Charger']; i++) types.push([kind, i]);
+    const shown = Math.min(12, types.length), count = Math.max(6, shown);
+    const top = tall ? 84 : 34, bottom = 27, availableH = Math.max(20, H - top - bottom);
+    let layout = { scale: 0 };
+    for (let cols = 2; cols <= Math.min(count, 6); cols++) {
+        const rows = Math.ceil(count / cols);
+        const scale = Math.min((W - 24) / cols / 90, availableH / rows / 96, 1.35);
+        if (scale > layout.scale) layout = { cols, rows, scale };
     }
-    text(night ? '夜间营业 · 路灯已开启' : '入口 →  按实际供电量结算', 30, H - 15, night ? '#b0c4a2' : '#6f8461', 10);
+    const { cols, rows, scale } = layout;
+    const cellW = 90 * scale, cellH = 96 * scale;
+    const startX = (W - cols * cellW) / 2, startY = top + (availableH - rows * cellH) / 2;
+    for (let i = 0; i < count; i++) {
+        const type = i < shown ? types[i] : null;
+        const car = type && state.cars.find(c => c.type === type[0] && c.slot === type[1]);
+        ctx.save(); ctx.translate(startX + (i % cols) * cellW, startY + Math.floor(i / cols) * cellH); ctx.scale(scale, scale);
+        rect(4, 3, 82, 89, 7, type ? (night ? '#52634c' : '#f4f7ec') : (night ? '#344b3c' : '#dce5d3'));
+        ctx.strokeStyle = '#b7c7aa'; ctx.setLineDash(type ? [] : [4, 4]); ctx.strokeRect(12, 27, 66, 54); ctx.setLineDash([]);
+        if (type) {
+            const fast = type[0] === 'fast';
+            rect(35, 7, 20, 17, 3, fast ? '#deb978' : '#88a878');
+            rect(39, 10, 12, 5, 1, '#254d38');
+            text(fast ? 'DC' : 'AC', 13, 20, '#6f845e', 9);
+            if (car) {
+                rect(31, 32, 30, 44, 6, '#354e3533');
+                rect(28, 29, 30, 44, 6, fast ? '#e6bc79' : '#a6bec5');
+                rect(31, 36, 24, 9, 2, '#35584b'); rect(31, 60, 24, 6, 2, '#35584b');
+                const pct = Math.min(1, car.kwhReceived / car.kwhNeeded);
+                rect(13, 84, 63, 3, 1, '#ccd8be'); rect(13, 84, 63 * pct, 3, 1, '#719c54');
+                text(`${Math.round(pct * 100)}%`, 60, 20, '#668d51', 8);
+            } else text('空闲', 33, 58, '#809572', 11);
+        } else text('待扩建', 27, 58, '#839875', 10);
+        ctx.restore();
+    }
+    if (types.length > shown) text(`另有 ${types.length - shown} 台充电桩正常营业`, 12, H - 31, night ? '#ccdab8' : '#6e855c', 9);
     if (['rainy', 'stormy'].includes(state.weather)) {
-        ctx.strokeStyle = 'rgba(90,125,145,.28)';
-        for (let i = 0; i < 45; i++) { const x = (i * 97 + state.minute * 3) % W, y = (i * 47) % H; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 5, y + 12); ctx.stroke(); }
+        ctx.strokeStyle = '#68889544';
+        for (let i = 0; i < 24; i++) { const x = (i * 97 + state.minute * 3) % W, y = (i * 47) % H; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 3, y + 9); ctx.stroke(); }
     }
 }
+
 function closeEventModal() {
     closeModal('event-modal');
     state.pendingEvent = null;
