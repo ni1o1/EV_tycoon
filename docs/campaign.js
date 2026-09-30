@@ -1,6 +1,6 @@
 // Net cash prevents borrowing immediately before the deadline from satisfying a cash target.
 function campaignCash(s) { return s.money - (s.loan?.active ? Math.max(0, s.loan.principal || 0) : 0); }
-function cashMetric(s, target) { return `净$${(campaignCash(s)/1000).toFixed(1)}k/${target/1000}k`; }
+function cashMetric(s, target) { return `净$${Math.floor(campaignCash(s)).toLocaleString('en-US')}/${target/1000}k`; }
 const CAMPAIGN = [
     { id: 1, name: '第一度电', subtitle: '从一座小站开始', tag: '入门', days: 7, money: 1800, city: 'sh', loc: 'ind', mode: 'std', assets: { slowCharger: 3, transformer: 1 }, pool: 24, rent: 350, rentGrowth: 0, stars: [2600, 3200],
       objective: '7 天交付 1,600 kWh，净资金 ≥ $2,300', short: '7 天 · 1,600 kWh + $2,300', detail: '专注慢充与定价。首周租金 $350，无随机事件；付清租金后，交付量与净资金均需达标。', lesson: '维护费每天结算；价格越高，愿意进站的客户越少。', goal: s => campaignCash(s) >= 2300 && (s.totalEnergy || 0) >= 1600, metric: s => `${Math.floor(s.totalEnergy || 0)}/1600kWh · ${cashMetric(s,2300)}` },

@@ -1,6 +1,6 @@
 {
   "name": "ev-tycoon",
-  "version": "2.3.1",
+  "version": "2.3.2",
   "description": "EV 大亨：充电站经营模拟游戏",
   "scripts": {
     "build": "tailwindcss -i utilities-input.css -o docs/utilities.css --minify",

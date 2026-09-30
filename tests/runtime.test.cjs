@@ -66,6 +66,7 @@ test('idle operation cannot pass the off-grid and peak challenges across sampled
 test('cash goals and stars exclude outstanding debt and enforce all flagship requirements',()=>{
  const b=boot();b.run('startLevelGame(6);state.money=50000;state.loan={active:true,principal:30000};state.assets.slowCharger=7;state.assets.fastCharger=5');
  assert.equal(b.run('CAMPAIGN[5].goal(state)'),false);
+ assert.equal(b.run('cashMetric({money:2255,loan:{active:false}},2300)'), '净$2,255/2.3k');
  b.run('state.loan.active=false;state.assets.fastCharger=4;state.assets.slowCharger=8');assert.equal(b.run('CAMPAIGN[5].goal(state)'),false);
  b.run('state.assets.fastCharger=5;state.assets.slowCharger=7;state.loan={active:true,principal:18000};showGameOver(true)');assert.equal(b.run('progress[6]'),1);
  b.close();
