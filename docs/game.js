@@ -862,18 +862,23 @@ function draw() {
     const W = canvasWidth, H = canvasHeight;
     const night = state.hour < 6 || state.hour >= 19;
     ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = night ? '#283c33' : '#e5ebdf'; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = night ? '#344862' : '#edf2f7'; ctx.fillRect(0, 0, W, H);
     const rect = (x, y, w, h, r, color) => { ctx.fillStyle = color; ctx.beginPath(); ctx.roundRect(x, y, Math.max(0, w), Math.max(0, h), r); ctx.fill(); };
     const text = (s, x, y, color, size = 10) => { ctx.fillStyle = color; ctx.font = `500 ${size}px "PingFang SC", sans-serif`; ctx.fillText(s, x, y); };
-    ctx.strokeStyle = night ? '#405349' : '#d1dcc9'; ctx.lineWidth = .6;
+    ctx.strokeStyle = night ? '#435871' : '#dce5ed'; ctx.lineWidth = .6;
     for (let x = 0; x < W; x += 24) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
     for (let y = 0; y < H; y += 24) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
     const tall = H >= 175;
     if (tall) {
         const hubWidth = Math.min(W - 28, 210);
-        rect((W - hubWidth) / 2, 39, hubWidth, 34, 6, '#27493a');
-        text(`光伏 ${state.assets.solar * 10} kW  /  储能 ${Math.round(state.batteryKwh)} kWh`, (W - hubWidth) / 2 + 13, 60, '#d7e9ad', 10);
-        for (const x of [22, W - 22]) { ctx.fillStyle = '#91ad7c'; ctx.beginPath(); ctx.arc(x, 55, 11, 0, Math.PI * 2); ctx.fill(); }
+        rect((W - hubWidth) / 2, 39, hubWidth, 34, 6, '#4b729e');
+        text(`光伏 ${state.assets.solar * 10} kW  /  储能 ${Math.round(state.batteryKwh)} kWh`, (W - hubWidth) / 2 + 13, 60, '#fff0bb', 10);
+        for (const x of [22, W - 22]) {
+            rect(x - 2, 49, 4, 15, 1, '#bea68b');
+            ctx.fillStyle = '#c1d4c8'; ctx.beginPath(); ctx.ellipse(x + 2, 62, 12, 4, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#8eb6a0'; ctx.beginPath(); ctx.arc(x, 51, 11, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#adceba'; ctx.beginPath(); ctx.arc(x - 3, 48, 7, 0, Math.PI * 2); ctx.fill();
+        }
     }
     const types = [];
     for (const kind of ['slow', 'fast']) for (let i = 0; i < state.assets[kind + 'Charger']; i++) types.push([kind, i]);
@@ -888,29 +893,36 @@ function draw() {
     const { cols, rows, scale } = layout;
     const cellW = 90 * scale, cellH = 96 * scale;
     const startX = (W - cols * cellW) / 2, startY = top + (availableH - rows * cellH) / 2;
+    const roadY = startY + rows * cellH + 8;
+    if (H - bottom - roadY >= 24) {
+        rect(0, roadY, W, 24, 0, night ? '#293b52' : '#9aacbd');
+        ctx.strokeStyle = night ? '#71879e' : '#edf3f8'; ctx.lineWidth = 2; ctx.setLineDash([15, 13]);
+        ctx.beginPath(); ctx.moveTo(0, roadY + 12); ctx.lineTo(W, roadY + 12); ctx.stroke(); ctx.setLineDash([]);
+    }
     for (let i = 0; i < count; i++) {
         const type = i < shown ? types[i] : null;
         const car = type && state.cars.find(c => c.type === type[0] && c.slot === type[1]);
         ctx.save(); ctx.translate(startX + (i % cols) * cellW, startY + Math.floor(i / cols) * cellH); ctx.scale(scale, scale);
-        rect(4, 3, 82, 89, 7, type ? (night ? '#52634c' : '#f4f7ec') : (night ? '#344b3c' : '#dce5d3'));
-        ctx.strokeStyle = '#b7c7aa'; ctx.setLineDash(type ? [] : [4, 4]); ctx.strokeRect(12, 27, 66, 54); ctx.setLineDash([]);
+        if (type) rect(4, 6, 82, 89, 7, night ? '#203248' : '#cbd9e6');
+        rect(4, 3, 82, 89, 7, type ? (night ? '#5c728c' : '#fbfcfe') : (night ? '#3d536c' : '#e0e7ef'));
+        ctx.strokeStyle = '#c3d3e5'; ctx.setLineDash(type ? [] : [4, 4]); ctx.strokeRect(12, 27, 66, 54); ctx.setLineDash([]);
         if (type) {
             const fast = type[0] === 'fast';
-            rect(35, 7, 20, 17, 3, fast ? '#deb978' : '#88a878');
-            rect(39, 10, 12, 5, 1, '#254d38');
-            text(fast ? 'DC' : 'AC', 13, 20, '#6f845e', 9);
+            rect(35, 7, 20, 17, 3, fast ? '#c9b3de' : '#94b6d7');
+            rect(39, 10, 12, 5, 1, '#416484');
+            text(fast ? 'DC' : 'AC', 13, 20, '#7693b2', 9);
             if (car) {
-                rect(31, 32, 30, 44, 6, '#354e3533');
-                rect(28, 29, 30, 44, 6, fast ? '#e6bc79' : '#a6bec5');
-                rect(31, 36, 24, 9, 2, '#35584b'); rect(31, 60, 24, 6, 2, '#35584b');
+                rect(31, 32, 30, 44, 6, '#334c6d25');
+                rect(28, 29, 30, 44, 6, fast ? '#edc683' : '#abc4dd');
+                rect(31, 36, 24, 9, 2, '#557797'); rect(31, 60, 24, 6, 2, '#557797');
                 const pct = Math.min(1, car.kwhReceived / car.kwhNeeded);
-                rect(13, 84, 63, 3, 1, '#ccd8be'); rect(13, 84, 63 * pct, 3, 1, '#719c54');
-                text(`${Math.round(pct * 100)}%`, 60, 20, '#668d51', 8);
-            } else text('空闲', 33, 58, '#809572', 11);
-        } else text('待扩建', 27, 58, '#839875', 10);
+                rect(13, 84, 63, 3, 1, '#d8e4ef'); rect(13, 84, 63 * pct, 3, 1, '#88b69f');
+                text(`${Math.round(pct * 100)}%`, 60, 20, '#7aab98', 8);
+            } else text('空闲', 33, 58, '#8fa4bb', 11);
+        } else text('待扩建', 27, 58, '#9caebe', 10);
         ctx.restore();
     }
-    if (types.length > shown) text(`另有 ${types.length - shown} 台充电桩正常营业`, 12, H - 31, night ? '#ccdab8' : '#6e855c', 9);
+    if (types.length > shown) text(`另有 ${types.length - shown} 台充电桩正常营业`, 12, H - 31, night ? '#bfd2e7' : '#8c9eb5', 9);
     if (['rainy', 'stormy'].includes(state.weather)) {
         ctx.strokeStyle = '#68889544';
         for (let i = 0; i < 24; i++) { const x = (i * 97 + state.minute * 3) % W, y = (i * 47) % H; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 3, y + 9); ctx.stroke(); }
@@ -1008,5 +1020,3 @@ function isLevelUnlocked(level) {
 
 // 更新关卡选择界面的显示状态
 function updateLevelSelectUI() { renderCampaign(); }
-
-
