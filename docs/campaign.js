@@ -143,7 +143,7 @@ let helpPage = 0;
 const HELP_PAGES = [
     ['开始经营', '点击 1× 开始，4× / 8× 加速。\nⅡ 暂停，空格键也可暂停。\n调价和购买设备都在屏幕底部。'],
     ['让资金转起来', '售价高，愿意进站的客户会减少。\n电费实时扣，维护与还款每天扣。\n留好租金；详细收支点「经营」查看。'],
-    ['能源与关卡', '光伏优先供电，储能低价充、高价放。\n离网时没电就限速，配电不足也会限速。\n点关卡名称查看目标，达成后解锁下一关。']
+    ['能源与车辆', '主屏曲线可点按读取功率。光伏优先，储能低价充、高价放。\n车型参数为模拟值；到站电量均值20%、标准差7%，限制在5%～50%。\n车旁显示容量、当前电量、实际/车辆上限功率。桩与站点供电也会限速。']
 ];
 function openHelp() { helpPage = 0; renderHelp(); openModal('help-modal'); }
 function renderHelp() {
@@ -180,6 +180,7 @@ function updateDashboard() {
     document.getElementById('compact-goal').textContent = `${Math.min(state.day - 1, days)}/${days}天`;
     const metric = currentLevel === 2 ? `光伏 ${state.assets.solar} / 2 组` : currentLevel === 3 ? `快充 ${state.assets.fastCharger} / 3 台` : currentLevel === 4 ? `交付 ${Math.floor(state.totalEnergy || 0)} / 250 kWh` : currentLevel === 5 ? `资金 $${Math.floor(state.money)} / $5,000` : currentLevel === 6 ? `充电桩 ${state.assets.slowCharger + state.assets.fastCharger} / 8 台` : '保持资金为正';
     document.getElementById('mission-metric').textContent = metric;
+    document.getElementById('main-mission-metric').textContent = metric;
     const nextPayment = loanPayment(state.loan, LOAN_DAILY_RATE).amount;
     const reserve = calcWeeklyRent() + calcDailyCost() * 3 + nextPayment * 3;
     const available = state.money - reserve;
@@ -188,6 +189,9 @@ function updateDashboard() {
     document.getElementById('available-cash').classList.toggle('danger', available < 0);
     document.getElementById('reserve-note').textContent = available < 0 ? '准备金不足，放缓扩建' : '本期租金 + 3 天维护与还贷';
     const d = state.lastTickData;
+    for (const [id, value] of Object.entries({solar:d.solar, battery:d.batt, grid:d.grid, load:d.load})) document.getElementById('reading-' + id).textContent = `${Number(value || 0).toFixed(1)}`;
+    document.getElementById('batt-status-text').textContent = d.battAction === 'charge' ? '充电中' : d.battAction === 'discharge' ? '放电中' : '待机';
+    document.getElementById('ui-speed-state').textContent = state.paused ? '已暂停' : state.gameSpeed === 500 ? '运行 1×' : state.gameSpeed === 125 ? '运行 4×' : '运行 8×';
     document.getElementById('ui-battery').textContent = `${Math.round(state.batteryKwh)} / ${state.assets.battery * CONFIG.batteryCap} kWh`;
     document.getElementById('ui-occupancy').textContent = `${state.cars.length} / ${state.assets.slowCharger + state.assets.fastCharger} 正在充电`;
     document.getElementById('ui-today-profit').textContent = `${state.currentDayProfit >= 0 ? '+' : '−'}$${Math.abs(state.currentDayProfit).toFixed(1)}`;

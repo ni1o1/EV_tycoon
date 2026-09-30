@@ -8,7 +8,11 @@
         const buff = (type, fallback) => state.activeBuffs.find(b => b.type === type)?.val ?? fallback;
         const offgrid = state.settings.mode === 'offgrid';
         const limit = powerLimit(state, config);
-        const requests = state.cars.map(car => Math.max(0, Math.min(car.kwhNeeded - car.kwhReceived, config.chargerPower[car.type] * buff('chargeSpeedMult', 1) / 6)));
+        const requests = state.cars.map(car => {
+            const vehicleLimit = car.type === 'slow' ? car.maxAcKw : car.maxDcKw;
+            const acceptedPower = Math.min(config.chargerPower[car.type] * buff('chargeSpeedMult', 1), vehicleLimit ?? Infinity);
+            return Math.max(0, Math.min(car.kwhNeeded - car.kwhReceived, acceptedPower / 6));
+        });
         const demand = requests.reduce((a, b) => a + b, 0);
         const sun = state.hour >= 6 && state.hour <= 18 ? Math.sin((state.hour - 6) / 12 * Math.PI) : 0;
         const weather = buff('forcedWeather', state.weather);
@@ -38,6 +42,7 @@
         state.cars.forEach((car, i) => {
             const delivered = demand > 0 ? requests[i] * served / demand : 0;
             car.kwhReceived = Math.min(car.kwhNeeded, car.kwhReceived + delivered);
+            car.lastPowerKw = delivered * 6;
             revenue += delivered * car.priceLocked;
         });
         return { revenue, cost: grid * gridPrice, delivered: served, load: served * 6, reqLoad: demand * 6, limit,

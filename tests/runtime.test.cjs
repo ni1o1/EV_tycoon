@@ -10,7 +10,7 @@ function boot(storage={}, seed=7){
  win.echarts={init:()=>({setOption(){},dispose(){},resize(){}}),graphic:{LinearGradient:function(){}}};
  let random=seed;win.Math.random=()=>{random=(random*1664525+1013904223)>>>0;return random/4294967296};
  for(const [k,v] of Object.entries(storage)) win.localStorage.setItem(k,typeof v==='string'?v:JSON.stringify(v));
- for(const file of ['energy.js','finance.js','game.js','campaign.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../docs',file),'utf8'),dom.getInternalVMContext(),{filename:file});
+ for(const file of ['vehicles.js','energy.js','finance.js','station-art.js','game.js','campaign.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../docs',file),'utf8'),dom.getInternalVMContext(),{filename:file});
  return {win,timers,run:code=>vm.runInContext(code,dom.getInternalVMContext()),close:()=>win.close()};
 }
 test('campaign initializes paused, restrictions are enforced by logic and UI, and saved game restores exact state',()=>{
