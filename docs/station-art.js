@@ -4,7 +4,8 @@
     const EMOJIS = ['🚗','🚕','🚙','🏎️','🚓','🚑','🚐','🛻'];
     const vehicles = new Map();
     let sceneState = null, visualTime = 0, previousTime = 0, previousPaused = true;
-    const reducedMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const motionQuery = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
+    const reducedMotion = () => !!motionQuery?.matches;
     const now = () => typeof performance !== 'undefined' ? performance.now() : 0;
     function sync(state) {
         const stamp = now();
@@ -133,7 +134,7 @@
             c.restore();
         }
         // Passing traffic stays on the road. Only real customers acquire a bay.
-        if(H>150){const pass=(visualTime%6500)/6500;car(-55+(W+110)*pass,roadY+22,.45,Math.floor(visualTime/6500)%8)}
+        if(H>150&&!reducedMotion()){const pass=(visualTime%6500)/6500;car(-55+(W+110)*pass,roadY+22,.45,Math.floor(visualTime/6500)%8)}
         const lerp=(a,b,t)=>a+(b-a)*t;
         for(const [key,v] of vehicles){
             if(!v.dock)continue;
@@ -155,5 +156,5 @@
         if(['rainy','stormy'].includes(state.weather)){c.strokeStyle='#b8d6e488';c.lineWidth=1;for(let i=0;i<30;i++){const x=(i*97+state.minute*3)%W,y=(i*47)%H;c.beginPath();c.moveTo(x,y);c.lineTo(x-3,y+10);c.stroke()}}
         c.restore();
     }
-    root.StationArt={draw,inspect};
+    root.StationArt={draw,inspect,reducedMotion};
 })(typeof globalThis!=='undefined'?globalThis:window);

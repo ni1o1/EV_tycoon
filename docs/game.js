@@ -879,7 +879,7 @@ function animateStation(stamp) {
     stationFrame = null;
     if (document.getElementById('game-main-container').classList.contains('hidden')) return;
     if (stamp - lastStationFrame >= 32 || state.paused) { draw(); lastStationFrame = stamp; }
-    if (!state.paused && !state.ended && !document.hidden) requestStationFrame();
+    if (!state.paused && !state.ended && !document.hidden && !StationArt.reducedMotion()) requestStationFrame();
 }
 function draw() {
     if (!canvasWidth || !canvasHeight) return;
