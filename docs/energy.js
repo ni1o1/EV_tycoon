@@ -38,12 +38,27 @@
             state.batteryKwh += gridCharge;
         }
         const grid = offgrid ? 0 : remaining + gridCharge;
+        // 车旁跳的 +$ 是这辆车这一回合的毛利：按它实际用掉的电，扣掉为它付的市电成本。
+        // 光伏与储能在放电时算免费（它们的成本已经在买入/充电那一回合结算过）。
+        const gridForCars = Math.max(0, remaining);
+        const carCostPerKwh = served > 0 ? gridForCars * gridPrice / served : 0;
         let revenue = 0;
+        // 回合编号：让车旁的 +$ 每十分钟都能重新跳一次，金额相同也不会漏。
+        const tickId = state.day * 144 + state.hour * 6 + Math.floor(state.minute / 10);
         state.cars.forEach((car, i) => {
             const delivered = demand > 0 ? requests[i] * served / demand : 0;
             car.kwhReceived = Math.min(car.kwhNeeded, car.kwhReceived + delivered);
             car.lastPowerKw = delivered * 6;
-            revenue += delivered * car.priceLocked;
+            const earned = delivered * car.priceLocked;
+            revenue += earned;
+            // 每辆车自己的毛利，用于在车旁跳出 +$ 金额（售价减成本电价）。
+            const rate = car.priceLocked - carCostPerKwh;
+            const margin = delivered * rate;
+            car.cashTick = margin;
+            car.cashRate = rate;
+            car.cashKwh = delivered;
+            car.cashTickId = tickId;
+            car.cashTotal = (car.cashTotal || 0) + margin;
         });
         return { revenue, cost: grid * gridPrice, delivered: served, load: served * 6, reqLoad: demand * 6, limit,
             solar: usedSolar * 6, batt: usedBatt * 6, grid: grid * 6,

@@ -3,7 +3,7 @@
     const CAR_COLORS = [ ['#ef7855','#c34d3e'], ['#f1bd45','#c68b2b'], ['#48a5d0','#287898'], ['#cf536c','#99384f'], ['#e9eeec','#9daeb2'], ['#f4f0e1','#b6b4a3'], ['#8e84cf','#655da0'], ['#54b89e','#338878'] ];
     const EMOJIS = ['🚗','🚕','🚙','🏎️','🚓','🚑','🚐','🛻'];
     const vehicles = new Map();
-    let sceneState = null, visualTime = 0, previousTime = 0, previousPaused = true;
+    let sceneState = null, visualTime = 0, previousTime = 0, previousPaused = true, sceneClockKey = '', sceneClockAt = 0, sceneHourNow = 0;
     const motionQuery = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
     const reducedMotion = () => !!motionQuery?.matches;
     const now = () => typeof performance !== 'undefined' ? performance.now() : 0;
@@ -22,7 +22,38 @@
             else {v.phase='leaving';v.started=visualTime;v.exitStart=v.pose || v.dock}
         }
     }
-    function inspect() { return Array.from(vehicles.values(),v=>({phase:v.phase,model:v.model,pose:v.pose?{...v.pose}:null})); }
+    function inspect() { return Array.from(vehicles.values(),v=>({phase:v.phase,model:v.model,pose:v.pose?{...v.pose}:null,cash:v.cashAmount??null,cashAge:v.cashAt===undefined?null:Math.round(visualTime-v.cashAt)})); }
+    // 电量越低越红，过半转黄，接近满电变绿。
+    function socColor(pct) {
+        const t = Math.max(0, Math.min(1, Number(pct) || 0));
+        const hue = t < 0.5 ? t * 104 : 52 + (t - 0.5) * 176;
+        return `hsl(${hue.toFixed(0)}, 68%, 42%)`;
+    }
+
+    // 天空按一天中的时刻插值：夜空 → 日出 → 白天 → 日落 → 夜空。
+    // 加钱文字从车四周同时冒出来
+    const CASH_SPOTS = [[-30,-16],[30,-16],[-16,-32],[16,-32]];
+    const SKY_KEYS = [
+        [0, [[16, 24, 42], [38, 52, 78]]],
+        [5, [[24, 34, 58], [70, 82, 110]]],
+        [6.5, [[58, 68, 112], [232, 154, 108]]],
+        [9, [[92, 148, 208], [176, 212, 236]]],
+        [15, [[92, 148, 208], [176, 212, 236]]],
+        [17.5, [[72, 78, 124], [234, 148, 96]]],
+        [19.5, [[26, 36, 62], [72, 80, 112]]],
+        [24, [[16, 24, 42], [38, 52, 78]]]
+    ];
+    function skyPalette(hour) {
+        let a = SKY_KEYS[0], b = SKY_KEYS[SKY_KEYS.length - 1];
+        for (let i = 0; i < SKY_KEYS.length - 1; i++) if (hour >= SKY_KEYS[i][0] && hour <= SKY_KEYS[i + 1][0]) { a = SKY_KEYS[i]; b = SKY_KEYS[i + 1]; break; }
+        const t = b[0] === a[0] ? 0 : (hour - a[0]) / (b[0] - a[0]);
+        const blend = (x, y) => x.map((v, i) => Math.round(v + (y[i] - v) * t));
+        return { top: blend(a[1][0], b[1][0]), bottom: blend(a[1][1], b[1][1]) };
+    }
+    // 阴雨天把天空压暗，晴天保持原色。
+    function weatherSkyTint(weather) {
+        return { sunny: 1, cloudy: 0.88, rainy: 0.66, stormy: 0.5, foggy: 0.92, snowy: 0.88 }[weather] ?? 1;
+    }
 
     function draw(c, W, H, state) {
         sync(state);
@@ -91,27 +122,92 @@
             rr(8,7,23,18,2,'#65949b');rr(10,9,19,11,1,'#315464');rr(42,9,24,13,1,'#aecdc2');
             shape([[-5,0],[9,-13],[86,-13],[78,2]],'#258c86');shape([[-5,0],[78,2],[78,7],[-5,5]],'#166d72');
             label('EV 充电站',10,4,8,'#fff3bc');
-            if(state.assets.solar){
-                shape([[11,-14],[20,-27],[84,-27],[77,-14]],'#264f76','#96bacb');
-                c.strokeStyle='#70aac4';c.lineWidth=.7;for(let i=0;i<4;i++){c.beginPath();c.moveTo(20+i*15,-26);c.lineTo(12+i*15,-15);c.stroke()}c.beginPath();c.moveTo(16,-20);c.lineTo(80,-20);c.stroke();
+            // 光伏：每两组加一层板阵，叠在屋顶上，买得越多屋顶越饱满（最多三层）。
+            const panels=state.assets.solar||0;
+            if(panels>0){
+                const layers=Math.min(3,Math.ceil(panels/2));
+                for(let L=layers-1;L>=0;L--){
+                    const back=L*.95, tone=L===0?'#264f76':L===1?'#2b587f':'#315f86';
+                    const x0=12+back*4, x1=78-back*4, top=-27-back*12, low=-14-back*12;
+                    shape([[x0+9,low],[x0+1,top],[x1-1,top],[x1-7,low]],tone,'#96bacb');
+                    c.strokeStyle='#70aac4';c.lineWidth=.7;
+                    for(let i=1;i<4;i++){const t=i/4;c.beginPath();c.moveTo(x0+9+(x1-7-x0-9)*t,low);c.lineTo(x0+1+(x1-1-x0-1)*t,top);c.stroke()}
+                    c.beginPath();c.moveTo(x0+5,(low+top)/2);c.lineTo(x1-4,(low+top)/2);c.stroke();
+                    if(L===layers-1){c.globalAlpha=.22;shape([[x0+9,low],[x0+1,top],[x0+30,top],[x0+36,low]],'#ffffff');c.globalAlpha=1}
+                }
             }
             if(state.assets.battery){rr(98,-2,16,26,2,'#eef3e4');shape([[114,-2],[121,-6],[121,19],[114,24]],'#9fb5ab');rr(101,1,10,5,1,'#2b735e');label('ϟ',102,17,13,'#3b9b73')}
+            // 配电：一列配电柜 + 后排机位，容量写在下面；买得越多场地越像一座小配电房。
+            const boxes=state.assets.transformer||0;
+            if(boxes>0){
+                const unit=(bx,by,dim)=>{const body=dim?'#dbe3ea':'#e9eef3',side=dim?'#8e9ca8':'#9aa8b4';
+                    rr(bx,by-17,3,18,1,'#c3ccd4');
+                    ellipse(bx+7,by+6,12,3.4,'#37574918');
+                    rr(bx,by-14,15,22,2,body);shape([[bx+15,by-14],[bx+20,by-17],[bx+20,by+5],[bx+15,by+8]],side);
+                    rr(bx+3,by-10,9,4,1,'#5b6b78');rr(bx+3,by-3,9,2.6,1,'#c2ccd4');rr(bx+3,by+2,9,2.6,1,'#c2ccd4');
+                    ellipse(bx+11,by-11,1.5,1.5,'#57c08a');
+                };
+                rr(-72,4,52,20,3,'#8d9aa266');
+                const front=Math.min(3,boxes);
+                for(let i=0;i<front;i++) unit(-40-i*14,14,false);
+                const back=Math.max(0,Math.min(3,boxes-3));
+                for(let i=0;i<back;i++) unit(-33-i*14,4,true);
+                if(boxes>1) label('⚠',-44,8,6,'#d8a13a');
+                label(`配电 ${boxes*20}kW`,-47,32,7,night?'#cfe0d6':'#4b6b78','center');
+            }
             c.restore();
         }
         c.save();c.clearRect(0,0,W,H);
-        c.fillStyle=night?'#344957':'#a7cc8e';c.fillRect(0,0,W,H);
+        const tallScene=H>=185;
+        // 场景太阳按真实时间在两回合之间插值，连续移动而不是每十分钟跳一次。
+        const clockKey=`${state.day}:${state.hour}:${state.minute}`;
+        if(clockKey!==sceneClockKey){sceneClockKey=clockKey;sceneClockAt=visualTime}
+        const stepMs=state.paused?0:Math.max(1,state.gameSpeed||500);
+        const tickProgress=state.paused?0:Math.min(1,(visualTime-sceneClockAt)/stepMs);
+        const hourNow=state.hour+state.minute/60+tickProgress*(10/60);
+        sceneHourNow=hourNow;
+        // 天空占场景约三成半高度，天气动效才有地方展示。
+        const groundTop=Math.round(tallScene?Math.max(64,Math.min(132,H*0.36)):Math.max(34,Math.min(64,H*0.34)));
+        c.fillStyle=night?'#2f4250':'#a7cc8e';c.fillRect(0,0,W,H);
+        // ---- 天空：天气直接画进场景，太阳位置与主屏时钟一致 ----
+        const pal=skyPalette(hourNow), tint=weatherSkyTint(state.weather);
+        const skyCss=c=>`rgb(${c.map(v=>Math.round(v*tint)).join(',')})`;
+        c.save();c.beginPath();c.rect(0,0,W,groundTop);c.clip();
+        const grad=typeof c.createLinearGradient==='function'?c.createLinearGradient(0,0,0,groundTop):null;
+        if(grad){grad.addColorStop(0,skyCss(pal.top));grad.addColorStop(1,skyCss(pal.bottom));c.fillStyle=grad}else c.fillStyle=skyCss(pal.bottom);
+        c.fillRect(0,0,W,groundTop);
+        const daylight=hourNow>=6&&hourNow<=18, dayT=Math.max(0,Math.min(1,(hourNow-6)/12)), nightT=(hourNow>18?hourNow-18:hourNow+6)/12;
+        const weather=state.weather||'sunny';
+        const stars=night&&['sunny','cloudy'].includes(weather)?14:0;
+        for(let i=0;i<stars;i++){const x=(i*89+17)%W, y=4+(i*37)%Math.max(6,groundTop-14), tw=.45+.55*Math.abs(Math.sin(visualTime/1400+i));c.globalAlpha=tw;ellipse(x,y,1.1,1.1,'#fdf6d8');c.globalAlpha=1}
+        if(!daylight){const mx=26+(W-52)*nightT, my=groundTop-8-Math.max(4,(groundTop-24))*Math.sin(Math.PI*nightT)*.75;
+            ellipse(mx,my,9,9,'#dfe8f24d');ellipse(mx,my,5,5,'#eef3f7');ellipse(mx+2.4,my-1.4,3.6,3.6,skyCss(pal.top))}
+        else {const sx=26+(W-52)*dayT, sy=groundTop-6-Math.max(6,(groundTop-16))*Math.sin(Math.PI*dayT), warm=1-Math.sin(Math.PI*dayT);
+            ellipse(sx,sy,14,14,`rgba(255,224,150,${(.16+.14*warm).toFixed(2)})`);
+            c.save();c.translate(sx,sy);c.rotate(visualTime/11000);
+            c.strokeStyle=`rgba(255,228,150,${(.30+.16*warm).toFixed(2)})`;c.lineWidth=1.3;c.lineCap='round';
+            for(let i=0;i<8;i++){c.rotate(Math.PI/4);c.beginPath();c.moveTo(9.5,0);c.lineTo(15,0);c.stroke()}
+            c.restore();
+            ellipse(sx,sy,6.5,6.5,warm>.55?'#f4a95c':'#f7c85a');}
+        if(weather==='stormy'){const flash=(visualTime%3600)/3600;if(flash<.05){c.fillStyle=`rgba(255,255,255,${(0.5*(1-flash/.05)).toFixed(2)})`;c.fillRect(0,0,W,groundTop)}}
+        const cloudLevel={sunny:2,cloudy:3,rainy:5,stormy:6,foggy:2,snowy:4}[weather]||0;
+        if(cloudLevel){const tone=night?'#4b5c72':weather==='sunny'?'#fdfdfb':weather==='stormy'?'#9aa6ae':'#dde5e9';
+            for(let i=0;i<cloudLevel;i++){const speed=(weather==='stormy'?16:8)+i*4.4, sweep=W+150, x=((visualTime/1000*speed+i*151)%sweep)-75, y=6+(i%(cloudLevel>3?3:2))*Math.max(8,(groundTop-26)/(cloudLevel>3?3:2));
+                c.globalAlpha=.94;ellipse(x,y,17,6.5,tone);ellipse(x-10,y+2,11,5,tone);ellipse(x+10,y+2,12,5,tone);ellipse(x+3,y-3.5,10,6.5,tone);c.globalAlpha=1}}
+        if(weather==='foggy'){c.fillStyle='#e7ecec9c';c.fillRect(0,0,W,groundTop)}
+        c.restore();
         // A landscaped forecourt, rather than a grid of interface cards.
-        rr(8,25,W-16,H-39,8,night?'#65777b':'#e6e5ce');
+        rr(8,groundTop,W-16,H-14-groundTop,8,night?'#65777b':'#e6e5ce');
         const roadH=H>150?38:23, roadY=H-roadH;
         c.fillStyle=night?'#253743':'#637b87';c.fillRect(0,roadY,W,roadH);
         c.fillStyle='#b6c7c0';c.fillRect(0,roadY-4,W,4);
         c.strokeStyle=night?'#71818b':'#e1e7dd';c.lineWidth=1.5;c.setLineDash([14,14]);c.beginPath();c.moveTo(0,roadY+roadH*.58);c.lineTo(W,roadY+roadH*.58);c.stroke();c.setLineDash([]);
         for(let i=0;i<5;i++)rr(18+i*5,roadY+3,3,roadH-7,0,'#dce4d3');
-        const tall=H>=185;
-        if(tall){utilities(W/2-55,42);tree(28,62,.7);tree(W-25,62,.8)}
-        else {tree(15,46,.55);tree(W-13,45,.55)}
+        const tall=tallScene;
+        if(tall){utilities(W/2-55,groundTop-26);tree(14,groundTop+6,.7);tree(W-20,groundTop+3,.8)}
+        else {tree(10,groundTop+12,.55);tree(W-12,groundTop+10,.55)}
         const types=[];for(const kind of ['slow','fast'])for(let i=0;i<state.assets[kind+'Charger'];i++)types.push([kind,i]);
-        const shown=Math.min(12,types.length), count=Math.max(3,shown), top=tall?76:27;
+        const shown=Math.min(12,types.length), count=Math.max(3,shown), top=tall?groundTop+12:Math.max(30,groundTop+6);
         const usableH=Math.max(25,roadY-top-6);let layout={scale:0};
         for(let cols=2;cols<=Math.min(count,6);cols++){const rows=Math.ceil(count/cols);const scale=Math.min((W-30)/cols/104,usableH/rows/91,1.5);if(scale>layout.scale)layout={cols,rows,scale}}
         const {cols,rows,scale}=layout, cellW=104*scale, cellH=91*scale;
@@ -120,14 +216,14 @@
             const type=i<shown?types[i]:null;
             const vehicle=type&&state.cars.find(v=>v.type===type[0]&&v.slot===type[1]);
             const visual=vehicle&&vehicles.get(vehicle);
-            if(visual) visual.dock={x:startX+i%cols*cellW+57*scale,y:startY+Math.floor(i/cols)*cellH+53*scale,s:.83*scale,angle:0};
+            if(visual) visual.dock={x:startX+i%cols*cellW+57*scale,y:startY+Math.floor(i/cols)*cellH+53*scale,s:.83*scale,angle:0,gun:{x:startX+i%cols*cellW+40*scale,y:startY+Math.floor(i/cols)*cellH+16*scale}};
             c.save();c.translate(startX+i%cols*cellW,startY+Math.floor(i/cols)*cellH);c.scale(scale,scale);
             shape([[7,32],[87,27],[99,72],[19,77]],type?'#bdd1b36e':'#c5cabb45');
             c.strokeStyle=type?'#fffdf0':'#a8b8a3';c.lineWidth=1.8;c.setLineDash(type?[]:[4,4]);
             c.beginPath();c.moveTo(7,34);c.lineTo(19,75);c.lineTo(36,74);c.moveTo(70,71);c.lineTo(97,69);c.lineTo(85,28);c.stroke();c.setLineDash([]);
             if(type){
                 charger(21,30,type[0]==='fast',!!visual&&visual.phase==='parked',1);
-                if(vehicle){const pct=typeof vehicleSoc==='function'?vehicleSoc(vehicle):Math.min(1,vehicle.kwhReceived/vehicle.kwhNeeded);rr(36,78,52,3,1,'#a4b5a1');rr(36,78,52*pct,3,1,'#209a73');label(visual.phase==='entering'?'驶入':`${Math.round(pct*100)}%`,10,83,7,'#377964');const cap=vehicle.type==='slow'?vehicle.maxAcKw:vehicle.maxDcKw;label(`${(vehicle.lastPowerKw||0).toFixed(1)} / ${cap??(vehicle.type==='slow'?7:30)} kW`,47,90,7,'#557968','center')}
+                if(vehicle){const pct=typeof vehicleSoc==='function'?vehicleSoc(vehicle):Math.min(1,vehicle.kwhReceived/vehicle.kwhNeeded),tone=socColor(pct);rr(36,78,52,3,1,'#a4b5a1');rr(36,78,Math.max(1.5,52*pct),3,1,tone);label(visual.phase==='entering'?'驶入':`${Math.round(pct*100)}%`,10,83,7,tone);const cap=vehicle.type==='slow'?vehicle.maxAcKw:vehicle.maxDcKw;label(`${(vehicle.lastPowerKw||0).toFixed(1)} / ${cap??(vehicle.type==='slow'?7:30)} kW`,47,90,7,'#557968','center')}
                 else {label('空闲',59,60,9,'#869c86','center');shape([[53,66],[57,63],[61,66],[57,69]],'#acc9a0')}
                 label(vehicle&&vehicle.batteryCapacity?`${vehicle.modelName} ${vehicle.batteryCapacity}kWh`:`${type[0]==='fast'?'快充':'慢充'} ${type[1]+1}`,43,17,7,night?'#e0e9d6':'#39716d');
             } else {label('扩建车位',52,58,8,'#97a18a','center')}
@@ -150,11 +246,64 @@
                 const begin=v.exitStart;const turn=Math.min(1,t/.55);pose={x:t<.55?lerp(begin.x,begin.x+18,turn):lerp(begin.x+18,W+65,(t-.55)/.45),y:lerp(begin.y,roadY+roadH*.62,turn),s:lerp(begin.s,.45,turn),angle:Math.sin(turn*Math.PI)*.2};
             } else pose=v.dock;
             v.pose={...pose};c.save();c.translate(pose.x,pose.y);c.rotate(pose.angle);car(0,0,pose.s,v.model);c.restore();
+            // 车停进车位就等于插上枪：把线从充电枪拉到车的充电口。
+            if(v.phase==='parked'&&pose.gun){
+                const port={x:pose.x-27*pose.s,y:pose.y+3*pose.s};
+                c.strokeStyle='#22343c';c.lineWidth=Math.max(1.1,2.1*pose.s);c.lineCap='round';
+                c.beginPath();c.moveTo(pose.gun.x,pose.gun.y);
+                c.bezierCurveTo(pose.gun.x+7*pose.s,pose.gun.y+21*pose.s,port.x-7*pose.s,port.y-19*pose.s,port.x,port.y);
+                c.stroke();
+                rr(port.x-2.3*pose.s,port.y-3*pose.s,4.6*pose.s,5.8*pose.s,1.3*pose.s,'#263e49');
+            }
+            // 每十分钟结算一次：在车四周散出几处纯文字金额，再慢慢褪掉。
+            // 金额是这辆车这一回合的毛利，亏钱时同样跳出来（红字）。
+            const earned=Number(key.cashTick)||0, tickId=key.cashTickId;
+            if(Math.abs(earned)>0.005&&tickId!==undefined&&tickId!==v.lastCashId){v.lastCashId=tickId;v.cashAt=visualTime;v.cashAmount=earned;v.cashRate=key.cashRate;v.cashKwh=key.cashKwh}
+            if(v.cashAt!==undefined&&v.phase==='parked'){
+                const gain=v.cashAmount>=0;
+                const text=`${gain?'+':'−'}$${Math.abs(v.cashAmount).toFixed(2)}`, tone=gain?'#2f8f63':'#c0503c', scale=Math.max(.55,pose.s);
+                const detail=Number.isFinite(v.cashKwh)&&Number.isFinite(v.cashRate)?`${v.cashKwh.toFixed(2)}度 × $${v.cashRate.toFixed(2)}`:'';
+                c.save();c.textAlign='center';c.lineJoin='round';
+                for(let k=0;k<4;k++){
+                    const [ox,oy]=CASH_SPOTS[k], life=1900, p=(visualTime-v.cashAt-k*110)/life;
+                    if(p<0||p>=1) continue;
+                    const grow=Math.min(1,p*5), rise=14*p;
+                    const alpha=p<0.12?p/0.12:Math.max(0,1-(p-0.12)/0.88);
+                    const size=(8.5+2.2*grow)*Math.max(.8,scale);
+                    c.font=`700 ${size.toFixed(1)}px "PingFang SC",sans-serif`;
+                    const x=pose.x+ox*scale, y=pose.y+oy*scale-rise;
+                    c.globalAlpha=alpha*.85;c.strokeStyle='#ffffff';c.lineWidth=2.6;c.strokeText(text,x,y);
+                    c.globalAlpha=alpha;c.fillStyle=tone;c.fillText(text,x,y);
+                    if(detail){c.globalAlpha=alpha*.8;c.font=`600 ${(size*0.66).toFixed(1)}px "PingFang SC",sans-serif`;c.fillStyle=tone;c.fillText(detail,x,y+size*0.92)}
+                }
+                c.globalAlpha=1;c.restore();
+            }
         }
         if(types.length>shown)label(`另有 ${types.length-shown} 桩营业`,W-10,roadY-9,8,night?'#d6e6da':'#506d6a','right');
         if(night){c.fillStyle='#182d4930';c.fillRect(0,0,W,H)}
-        if(['rainy','stormy'].includes(state.weather)){c.strokeStyle='#b8d6e488';c.lineWidth=1;for(let i=0;i<30;i++){const x=(i*97+state.minute*3)%W,y=(i*47)%H;c.beginPath();c.moveTo(x,y);c.lineTo(x-3,y+10);c.stroke()}}
+        if(['rainy','stormy'].includes(state.weather)){
+            const stormy=state.weather==='stormy', drops=stormy?170:110, slant=stormy?.42:.26;
+            c.strokeStyle=stormy?'#cfe4f0b0':'#bcd8e6a0';c.lineCap='round';
+            for(let i=0;i<drops;i++){
+                const depth=(i%3)/2, len=(5+depth*7+(stormy?3:0))*(H>150?1:.8), fall=(430+520*depth)*(stormy?1.55:1);
+                const y=((i*79.3+visualTime/1000*fall)%(H+40))-20;
+                const x=(((i*53.7-y*slant)%W)+W)%W;
+                c.lineWidth=.65+depth*.65;
+                c.beginPath();c.moveTo(x,y);c.lineTo(x-len*slant,y+len);c.stroke();
+            }
+            // 落地水花：地面上一圈圈扩散的小涟漪
+            const ripples=stormy?30:18;
+            for(let i=0;i<ripples;i++){
+                const phase=((visualTime/620)+i*.41)%1;
+                if(phase>.6) continue;
+                const x=(i*149)%W, y=groundTop+10+((i*89)%Math.max(16,roadY-groundTop-20));
+                c.globalAlpha=(1-phase/.6)*.45;
+                ellipse(x,y,2.5+phase*8,1.1+phase*3.4,'#ffffff');
+                c.globalAlpha=1;
+            }
+        }
+        if(state.weather==='snowy'){c.fillStyle='#ffffffcc';for(let i=0;i<26;i++){const x=(i*83+visualTime/26)%W,y=(i*59+visualTime/40)%H;c.beginPath();c.arc(x,y,1.2,0,Math.PI*2);c.fill()}}
         c.restore();
     }
-    root.StationArt={draw,inspect,reducedMotion};
+    root.StationArt={draw,inspect,reducedMotion,socColor,hourNow:()=>sceneHourNow};
 })(typeof globalThis!=='undefined'?globalThis:window);

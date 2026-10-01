@@ -13,7 +13,9 @@ function simulate(level,seed,{price=1.5,purchases=[],policy='',tune='',unlocks}=
  for(const file of ['vehicles.js','energy.js','finance.js','station-art.js','game.js','campaign.js'])run(fs.readFileSync(path.join(root,'docs',file),'utf8'));
  run('updateUI=()=>{};draw=()=>{};resizeCanvas=()=>{};saveGame=()=>{};spawnFloatText=()=>{};showMoneyChange=()=>{};initChart=()=>{};');
  if(tune)run(tune);
- const unlocked=unlocks ?? (level===1?[]:level===2?['marketing','fastCharger','solar']:['marketing','fastCharger','solar','battery','bank']);
+ // 解锁跟着关卡走：第 N 关开始前，手上只有前 N-1 关的成果。
+ const progression=[['fastCharger'],['fastCharger','solar'],['fastCharger','solar','battery'],['fastCharger','solar','battery','bank']];
+ const unlocked=unlocks ?? (progression.slice(0,Math.max(0,Math.min(4,level-1))).pop()||[]);
  run(`career.unlocks=${JSON.stringify(unlocked)};`);
  run(`startLevelGame(${level});state.price=${price};${purchases.map(x=>`buyAsset('${x}');`).join('')}`);
  const result=run(`(()=>{let lowest=state.money,ticks=0;for(;ticks<30000&&!state.ended;ticks++){if(state.pendingRent>0)payBill();if(state.pendingEvent)closeEventModal();lowest=Math.min(lowest,state.money);if(state.ended)break;${policy}state.paused=false;tick();lowest=Math.min(lowest,state.money)}return {level:${level},won:state.victoryAchieved,money:Math.round(state.money),lowest:Math.round(lowest),energy:Math.round(state.totalEnergy),served:state.served||0,lost:state.lost||0,days:state.day-1,assets:{...state.assets},unlocks:[...career.unlocks],milestones:[...state.claimedMilestones]}})()`);
@@ -22,14 +24,15 @@ function simulate(level,seed,{price=1.5,purchases=[],policy='',tune='',unlocks}=
 function investments(targets,priority=Object.keys(targets)) {
  return `const targets=${JSON.stringify(targets)};for(const k of ${JSON.stringify(priority)}){if(state.assets[k]>=targets[k]||purchaseRestriction(k))continue;if(state.money>=getAssetCost(k)+calcWeeklyRent()+3*calcDailyCost()){buyAsset(k)}break;}`;
 }
+// 参考策略：按当前已解锁的设备逐格扩建，留足租金与三天维护费再下单。
 const referencePlans = {
- 1: {price:1.8,purchases:['slowCharger'],policy:investments({transformer:2,fastCharger:1,solar:1},['fastCharger','transformer','solar'])},
- 2: {price:1.8,purchases:['solar'],policy:investments({solar:2,fastCharger:1,transformer:2,battery:1},['fastCharger','transformer','solar','battery'])},
- 3: {price:1.8,purchases:['fastCharger','transformer'],policy:investments({transformer:5,fastCharger:4,solar:3,battery:2})},
- 4: {price:1.8,purchases:['fastCharger'],policy:investments({solar:2,transformer:2,battery:1})},
- 5: {price:1.9,purchases:['slowCharger','transformer'],policy:investments({solar:3,fastCharger:2,transformer:6,slowCharger:4,battery:2})},
- 6: {price:1.8,purchases:['solar','solar','battery','slowCharger'],policy:investments({battery:4,solar:6,slowCharger:4})},
- 7: {price:1.9,purchases:['fastCharger','transformer'],policy:investments({transformer:7,fastCharger:5,slowCharger:3,battery:2})},
+ 1: {price:1.8,purchases:['slowCharger','slowCharger'],policy:investments({slowCharger:6,transformer:3},['slowCharger','transformer'])},
+ 2: {price:1.8,purchases:['fastCharger','transformer'],policy:investments({fastCharger:4,transformer:4,slowCharger:4})},
+ 3: {price:1.8,purchases:['fastCharger','transformer'],policy:investments({transformer:6,fastCharger:5,solar:3})},
+ 4: {price:1.8,purchases:['fastCharger','transformer'],policy:investments({fastCharger:4,transformer:4,solar:3,battery:2})},
+ 5: {price:1.9,purchases:['slowCharger','transformer'],policy:investments({slowCharger:5,transformer:4,fastCharger:3,solar:3,battery:2})},
+ 6: {price:1.85,purchases:['solar','battery','slowCharger'],policy:investments({battery:6,solar:8,slowCharger:5})},
+ 7: {price:1.9,purchases:['fastCharger','transformer'],policy:investments({transformer:7,fastCharger:5,slowCharger:3,battery:2,solar:3})},
  8: {price:1.8,purchases:['transformer','fastCharger'],policy:investments({transformer:8,fastCharger:6,slowCharger:8,solar:4,battery:3})},
  9: {price:1.9,purchases:['transformer','fastCharger'],policy:investments({transformer:6,fastCharger:5,slowCharger:5,solar:4,battery:4})},
  10:{price:1.9,purchases:['transformer','fastCharger'],policy:investments({transformer:9,fastCharger:6,slowCharger:6,solar:5,battery:4})}

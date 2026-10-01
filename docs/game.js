@@ -1,4 +1,6 @@
 const LOAN_DAILY_RATE = 0.02;
+// 金额增减统一配色：加钱绿、扣钱红；警示文案一律红色。
+const GAIN = '#2f8f63', LOSS = '#c0503c';
 const CITY_CONFIG = {
     bj: { name: "北京", prices: [0.35, 0.35, 0.35, 0.35, 0.35, 0.35, 0.35, 0.75, 0.75, 0.75, 1.50, 1.50, 1.50, 0.75, 0.75, 0.75, 0.75, 1.50, 1.50, 1.50, 1.50, 1.50, 0.75, 0.35] },
     gz: { name: "广州", prices: [0.35, 0.35, 0.35, 0.35, 0.35, 0.35, 0.35, 0.35, 0.75, 0.75, 1.50, 1.50, 0.75, 0.75, 1.50, 1.50, 1.50, 1.50, 1.50, 0.75, 0.75, 0.75, 0.75, 0.75] },
@@ -10,22 +12,26 @@ const LOC_CONFIG = {
     com: { name: "商业区", traffic: [0.05, 0.05, 0.0, 0.0, 0.0, 0.0, 0.1, 0.2, 0.4, 0.6, 0.8, 0.9, 0.8, 0.7, 0.7, 0.6, 0.7, 0.9, 1.0, 1.0, 0.9, 0.6, 0.3, 0.1] }, 
     ind: { name: "就业中心", traffic: [0.05, 0.05, 0.05, 0.05, 0.1, 0.2, 0.5, 0.9, 1.0, 0.8, 0.6, 0.5, 0.5, 0.5, 0.4, 0.3, 0.2, 0.1, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05] } 
 };
+// 每条曲线只描述一天内的相对形状；除以自身均值后，日均到站量由关卡客流强度决定。
+Object.values(LOC_CONFIG).forEach(loc => { loc.avgTraffic = loc.traffic.reduce((a, b) => a + b, 0) / loc.traffic.length; });
 
 const CONFIG = {
     initialMoney: 2800,
     dailyCost: { slowCharger: 12, fastCharger: 35, solar: 8, battery: 18, transformer: 15 },
     baseWeeklyRent: 1150,
     rentGrowth: 220,
-    baseCosts: { slowCharger: 800, fastCharger: 2400, solar: 1200, battery: 1800, transformer: 1000, marketing: 1800 },
+    baseCosts: { slowCharger: 800, fastCharger: 2400, solar: 1200, battery: 1800, transformer: 1000 },
     inflationRate: 1.10, 
     batteryCap: 100, batteryRate: 20, solarMax: 10, 
     baseLoadLimit: 20, transformerBoost: 20, 
     chargerPower: { slow: 7, fast: 30 },
-    baseDailyPool: 15, 
+    // 自由经营的日均到站车辆数；关卡用各自的 traffic 覆盖。客流没有每日上限，能接住多少只看空闲桩位与配电。
+    baseDailyTraffic: 50,
     weather: {
         types: ['sunny', 'cloudy', 'rainy'],
         probs: [0.6, 0.25, 0.15],
         eff: { sunny: 1.0, cloudy: 0.6, rainy: 0.1, foggy: 0.4, stormy: 0.0, snowy: 0.25 },
+        names: { sunny: '晴', cloudy: '多云', rainy: '雨', foggy: '雾', stormy: '暴雨', snowy: '雪' },
         icons: { sunny: '☀️', cloudy: '☁️', rainy: '🌧️', foggy: '🌫️', stormy: '⛈️', snowy: '❄️' }
     },
     carEmojis: ['🚗', '🚕', '🚙', '🏎️', '🚓', '🚑', '🚐', '🛻'],
@@ -67,8 +73,7 @@ function getInitialState() {
         paused: true, gameSpeed: 500, lastGameSpeed: 500,
         assets: { slowCharger: 1, fastCharger: 0, solar: 0, battery: 0, transformer: 0 }, 
         currentCosts: { ...CONFIG.baseCosts },
-        batteryKwh: 0, price: 1.5, 
-        dailyPoolMax: CONFIG.baseDailyPool, dailyPoolLeft: CONFIG.baseDailyPool,
+        batteryKwh: 0, price: 1.5, dailyTraffic: CONFIG.baseDailyTraffic,
         cars: [], 
         lastTickData: { load: 0, solar: 0, batt: 0, grid: 0, limit: CONFIG.baseLoadLimit, battAction: 'idle' },
         chartData: { demand: new Array(144).fill(null), solar: new Array(144).fill(null), battery: new Array(144).fill(null), load: new Array(144).fill(null), yesterdayLoad: new Array(144).fill(null) },
@@ -116,8 +121,7 @@ function startLevelGame(level) {
     state.levelName = mission.name;
     state.money = mission.money;
     state.assets = { ...state.assets, ...mission.assets };
-    state.dailyPoolMax = mission.pool || 20;
-    state.dailyPoolLeft = state.dailyPoolMax;
+    state.dailyTraffic = mission.traffic || CONFIG.baseDailyTraffic;
     state.weather = 'sunny'; state.forecast = 'sunny';
     launchGame();
 }
@@ -130,32 +134,48 @@ function startGame() {
     state = getInitialState();
     state.settings = { ...selectedSettings };
     state.levelName = '自由经营';
-    state.dailyPoolMax = state.settings.mode === 'luxury' ? 40 : state.settings.mode === 'jam' ? 999 : 20;
-    state.dailyPoolLeft = state.dailyPoolMax;
+    state.dailyTraffic = state.settings.mode === 'luxury' ? 100 : CONFIG.baseDailyTraffic;
     if (state.settings.mode === 'super') { state.assets.slowCharger = 0; state.assets.fastCharger = 1; state.assets.transformer = 1; }
     if (state.settings.mode === 'offgrid') { state.assets.solar = 3; state.assets.battery = 2; state.batteryKwh = 100; }
     launchGame();
 }
 
 
+// 还没有光伏或储能时，曲线与图例不展示对应项目。
+function energySeries() {
+    const list = [{ key: 'yesterdayLoad', name: '昨日', color: '#9aa6b2', dashed: true }];
+    if (state.assets.solar > 0) list.push({ key: 'solar', name: '光伏', color: '#e9a62b' });
+    if (state.assets.battery > 0) list.push({ key: 'battery', name: '储能', color: '#24a27b' });
+    list.push({ key: 'load', name: '电网', color: '#3f8bdd' });
+    list.push({ key: 'demand', name: '负荷', color: '#9363bd' });
+    return list;
+}
+let chartSeriesKey = '';
 function initChart() {
     const chartDom = document.getElementById('chart-container');
     if (myChart) { myChart.dispose(); myChart = null; }
     if (!chartDom.clientWidth) return;
     myChart = echarts.init(chartDom);
     if (!state.chartData.demand) state.chartData.demand = new Array(144).fill(null);
-    const line = (name, data, color, dashed = false) => ({ name, type: 'line', data, showSymbol: false, smooth: false, itemStyle: { color }, lineStyle: { width: dashed ? 1 : 1.8, type: dashed ? 'dashed' : 'solid' } });
+    const series = energySeries();
+    chartSeriesKey = series.map(s => s.key).join(',');
+    const line = s => ({ id: s.key, name: s.name, type: 'line', data: state.chartData[s.key], showSymbol: false, smooth: false, itemStyle: { color: s.color }, lineStyle: { width: s.dashed ? 1 : 1.8, type: s.dashed ? 'dashed' : 'solid' } });
     const option = {
         animation: false, backgroundColor: 'transparent',
         graphic: [{id:'empty-note',type:'text',left:'center',top:'50%',invisible:state.chartData.load.some(v=>v!==null)||state.chartData.yesterdayLoad.some(v=>v!==null),style:{text:'营业后记录功率 · 点按曲线读取数值',fill:'#98a6ae',font:'9px sans-serif'}}],
         grid: { left: 30, right: 12, bottom: 18, top: 24 },
-        legend: { data: ['昨日', '光伏', '储能', '电网', '负荷'], top: 0, textStyle: { color: '#526477', fontSize: 9 }, itemWidth: 12, itemHeight: 5, itemGap: 10 },
+        legend: { data: series.map(s => s.name), top: 0, textStyle: { color: '#526477', fontSize: 9 }, itemWidth: 12, itemHeight: 5, itemGap: 10 },
         tooltip: { trigger: 'axis', confine: true, textStyle: { fontSize: 11 }, valueFormatter: value => value == null ? '—' : Number(value).toFixed(1) + ' kW' },
         xAxis: { type: 'category', boundaryGap: false, data: TIME_LABELS, axisLine: { lineStyle: { color: '#dce4e9' } }, axisTick: { show: false }, axisLabel: { color: '#83919c', fontSize: 8, interval: 35, showMaxLabel: true } },
         yAxis: { type: 'value', min: 0, splitNumber: 2, splitLine: { lineStyle: { color: '#e5ebef', type: 'dashed' } }, axisLabel: { color: '#748391', fontSize: 8 } },
-        series: [line('昨日', state.chartData.yesterdayLoad, '#9aa6b2', true), line('光伏', state.chartData.solar, '#e9a62b'), line('储能', state.chartData.battery, '#24a27b'), line('电网', state.chartData.load, '#3f8bdd'), line('负荷', state.chartData.demand, '#9363bd')]
+        series: series.map(line)
     };
-    myChart.setOption(option);
+    myChart.setOption(option, true);
+}
+// 买下第一组光伏或储能后重建曲线，之后按 id 增量更新。
+function refreshChartSeries() {
+    if (!myChart) return;
+    if (energySeries().map(s => s.key).join(',') !== chartSeriesKey) initChart();
 }
 
 function restartGame() {
@@ -257,7 +277,7 @@ function takeLoan() {
         dailyBasePrincipal: data.dailyBasePrincipal || 0
     };
 
-    spawnFloatText(`贷款 +$${data.principal}`, '#2563eb');
+    spawnFloatText(`贷款 +$${data.principal}`, GAIN);
     closeLoanModal(); 
     updateUI();
 }
@@ -278,12 +298,7 @@ function tick() {
     clearTimeout(state.timer);
     if (state.paused || modalOpenCount > 0 || state.ended) return;
     let gridPrice = currentGridPrice();
-    let traffic = LOC_CONFIG[state.settings.loc].traffic[state.hour] * 0.18;
-    if (state.settings.mode === 'ghost') traffic *= 0.5;
-    if (['jam', 'luxury'].includes(state.settings.mode)) traffic *= 2;
-    const buff = state.activeBuffs.find(b => b.type === 'trafficMult');
-    if (buff) traffic *= buff.val;
-    trySpawnCar(traffic);
+    trySpawnCar(state.hour);
     processEnergy(gridPrice);
     const i = state.hour * 6 + state.minute / 10;
     state.chartData.solar[i] = state.lastTickData.solar;
@@ -291,10 +306,7 @@ function tick() {
     state.chartData.load[i] = state.lastTickData.grid;
     if (!state.chartData.demand) state.chartData.demand = new Array(144).fill(null);
     state.chartData.demand[i] = state.lastTickData.load;
-    if (myChart) myChart.setOption({ graphic: [{id:'empty-note',invisible:true}], series: [
-        { data: state.chartData.yesterdayLoad }, { data: state.chartData.solar },
-        { data: state.chartData.battery }, { data: state.chartData.load }, { data: state.chartData.demand }
-    ] });
+    if (myChart) myChart.setOption({ graphic: [{id:'empty-note',invisible:true}], series: energySeries().map(s => ({ id: s.key, data: state.chartData[s.key] })) });
     state.cars = state.cars.filter(car => {
         if (car.kwhReceived >= car.kwhNeeded - 0.001) { state.served = (state.served || 0) + 1; return false; }
         car.ticksLeft--;
@@ -317,7 +329,6 @@ function checkEndGame() {
     if (state.ended) return true;
     if (state.money < 0) { showGameOver(false); return true; }
     if (state.pendingRent > 0) return false;
-    checkTechnologyUnlocks();
     const mission = currentMission();
     const days = state.targetDays || CONFIG.targetDays;
     if (state.day > days && !state.victoryAchieved) {
@@ -338,6 +349,8 @@ function showGameOver(victory, missedGoal = false) {
     const completedId=state.campaignRevision===CAMPAIGN_REVISION?currentLevel:LEGACY_LEVEL_MAP[currentLevel];
     if (victory && currentLevel) {
         unlockLevel(completedId + 1);
+        const unlockedTech = state.campaignRevision === CAMPAIGN_REVISION ? unlockTechnologiesForLevel(completedId) : null;
+        if (unlockedTech) setTimeout(() => toast(`新解锁：${unlockedTech.name} · 可在本关与后续关卡直接购买`), 400);
         const net = campaignCash(state);
         const score = net >= mission.stars[1] ? 3 : net >= mission.stars[0] ? 2 : 1;
         if(state.campaignRevision===CAMPAIGN_REVISION){
@@ -346,7 +359,7 @@ function showGameOver(victory, missedGoal = false) {
         }else{
             legacyProgress[currentLevel]=Math.max(legacyProgress[currentLevel]||0,score);
             writeStorage('ev_tycoon_progress_v2',legacyProgress);
-            const learned=currentLevel>=2?TECHNOLOGIES.map(t=>t.key):['marketing','fastCharger','solar'];
+            const learned=currentLevel>=2?TECHNOLOGIES.map(t=>t.key):['fastCharger','solar'];
             career.unlocks=[...new Set([...career.unlocks,...learned])];writeStorage('ev_tycoon_career_v3',career);
         }
     }
@@ -370,7 +383,8 @@ function processEnergy(gridPrice) {
     state.totalRevenue = (state.totalRevenue || 0) + result.revenue;
     state.totalEnergy = (state.totalEnergy || 0) + result.delivered;
     state.lastTickData = result;
-    showMoneyChange(profit, '充电净收');
+    // 每十分钟刷新一次资金变化；没有车辆充电、也没有购电时不闪 0 元，避免刷屏。
+    if (Math.abs(profit) > 0.005) showMoneyChange(profit, '充电净收');
 }
 
 
@@ -467,7 +481,7 @@ function triggerRandomEvent() {
         state.money += amount;
         showMoneyChange(amount, ev.t);
         document.getElementById('ev-amt').innerText = (amount >= 0 ? "+" : "−") + `$${Math.abs(amount)}`;
-        document.getElementById('ev-amt').className = amount > 0 ? "font-bold font-mono text-lg text-green-600" : "font-bold font-mono text-lg text-red-600";
+        document.getElementById('ev-amt').className = amount > 0 ? "font-bold font-mono text-lg cash-positive" : "font-bold font-mono text-lg cash-negative";
     }
 
     document.getElementById('ev-icon').innerText = isLongTerm ? ev.icon : (ev.amt > 0 ? '💰' : '💸');
@@ -492,7 +506,7 @@ function dailySettle() {
     const dailyCost = calcDailyCost();
     state.money -= dailyCost;
     let loanPaid = 0;
-    spawnFloatText(`日维护 -$${dailyCost}`, '#f97316');
+    spawnFloatText(`日维护 -$${dailyCost}`, LOSS);
     
         if (state.loan.active) {
         const payment = loanPayment(state.loan, LOAN_DAILY_RATE);
@@ -500,17 +514,12 @@ function dailySettle() {
         loanPaid = payment.amount;
         state.loan.principal = Math.round(Math.max(0, state.loan.principal - payment.principal) * 100) / 100;
         state.loan.daysLeft--;
-        spawnFloatText(`还贷 -$${payment.amount.toFixed(2)}`, '#49735b');
+        spawnFloatText(`还贷 -$${payment.amount.toFixed(2)}`, LOSS);
         if (state.loan.daysLeft <= 0 || state.loan.principal <= 0.001) {
             state.loan.active = false; state.loan.principal = 0;
             spawnFloatText('贷款结清', '#49735b');
         }
     }
-
-    if (state.settings.mode === 'jam') state.dailyPoolLeft = 999;
-    else if (state.settings.mode === 'ghost') state.dailyPoolLeft = state.dailyPoolMax;
-    else if (state.settings.mode === 'powerlimit') state.dailyPoolLeft = state.dailyPoolMax;
-    else state.dailyPoolLeft = state.dailyPoolMax; 
 
     state.lastDayProfit = state.currentDayProfit - dailyCost - loanPaid;
     state.history = state.history || [];
@@ -525,7 +534,8 @@ function dailySettle() {
     if (state.chartData.demand) state.chartData.demand.fill(null);
     
     if(myChart) {
-        myChart.setOption({ series: [ { data: state.chartData.yesterdayLoad }, { data: [] }, { data: [] }, { data: [] }, { data: [] } ] });
+        const blanks = { yesterdayLoad: state.chartData.yesterdayLoad, solar: [], battery: [], load: [], demand: [] };
+        myChart.setOption({ series: energySeries().map(s => ({ id: s.key, data: blanks[s.key] })) });
     }
 
     let rentInterval = 7;
@@ -572,21 +582,26 @@ function calcWeeklyRent() {
     return base + (state.weeksSurvived * growth);
 }
 
-function trySpawnCar(baseProb) {
-    if (state.dailyPoolLeft <= 0) return;
-    const totalChargers = state.assets.slowCharger + state.assets.fastCharger;
-    const spawnAttempts = 2 + Math.floor(totalChargers * 0.8); 
-    for (let i = 0; i < spawnAttempts; i++) {
-        if (state.dailyPoolLeft <= 0) break;
-        attemptSingleSpawn(baseProb);
-    }
+function dailyTrafficDemand() {
+    let demand = state.dailyTraffic || CONFIG.baseDailyTraffic;
+    if (state.weather === 'rainy') demand *= 0.9;
+    if (state.settings.mode === 'ghost') demand *= 0.5;
+    if (['jam', 'luxury'].includes(state.settings.mode)) demand *= 2;
+    const buff = state.activeBuffs.find(b => b.type === 'trafficMult');
+    if (buff) demand *= buff.val;
+    return demand;
+}
+// 客流只是期望值，没有每日上限：想接住更多车只能扩建桩位与配电。
+function trySpawnCar(hour) {
+    const loc = LOC_CONFIG[state.settings.loc];
+    const shape = loc.traffic[hour] / loc.avgTraffic;
+    const expected = dailyTrafficDemand() * shape / 144;
+    let arrivals = Math.floor(expected);
+    if (Math.random() < expected - arrivals) arrivals++;
+    for (let i = 0; i < arrivals; i++) attemptSingleSpawn();
 }
 
-function attemptSingleSpawn(baseProb) {
-    let weatherMod = 1.0;
-    if (state.weather === 'rainy') weatherMod = 0.9;
-    if (Math.random() > baseProb * weatherMod) return;
-
+function attemptSingleSpawn() {
     const myPrice = state.price;
     let acceptChance = 1.0;
     if (myPrice > 2.0) {
@@ -627,7 +642,6 @@ function attemptSingleSpawn(baseProb) {
     }
 
     if (spawnType && slot !== -1) {
-        state.dailyPoolLeft--;
         const emoji = CONFIG.carEmojis[Math.floor(Math.random() * CONFIG.carEmojis.length)];
         const vehicle = createVehicle(emoji);
         const power = Math.min(CONFIG.chargerPower[spawnType], spawnType === 'slow' ? vehicle.maxAcKw : vehicle.maxDcKw);
@@ -664,13 +678,9 @@ function buyAsset(type) {
     if (type === 'slowCharger' && state.settings.mode === 'super') { spawnFloatText("模式限制: 禁止慢充", "#ef4444"); return; }
     if (state.money >= cost) {
         state.money -= cost;
-        if (type === 'marketing') {
-            state.marketingPurchases = (state.marketingPurchases || 0) + 1; state.dailyPoolMax += 10; state.dailyPoolLeft += 10; spawnFloatText(`推广 -$${cost} · 客流+10`, "#b85586");
-        } else {
-            state.assets[type]++; spawnFloatText(`购买 -$${cost}`, "#2563eb");
-        }
+        state.assets[type]++; spawnFloatText(`购买 -$${cost}`, LOSS);
         state.currentCosts[type] = Math.floor(state.currentCosts[type] * CONFIG.inflationRate);
-        updateUI(); resizeCanvas(); saveGame(true);
+        refreshChartSeries(); updateUI(); resizeCanvas(); saveGame(true);
     } else {
         spawnFloatText("资金不足", "#ef4444");
     }
@@ -694,20 +704,22 @@ function spawnFloatText(txt, col) {
 function showMoneyChange(amount, reason) {
     const el = document.getElementById('ui-tick-profit');
     if (!el) return;
-    el.textContent = `${amount < 0 ? '−' : '+'}$${Math.abs(amount).toFixed(2)}`;
+    const shown = Math.abs(amount) >= 1000 ? compactMoney(amount) : Math.abs(amount).toFixed(1);
+    el.textContent = `${amount < 0 ? '−' : '+'}$${shown}`;
     el.title = `${reason}：${el.textContent}`;
     el.className = amount < 0 ? 'cash-negative' : 'cash-positive';
     el.classList.remove('cash-flash'); void el.offsetWidth; el.classList.add('cash-flash');
 }
 
 function updateUI() {
+    refreshPriceWheel(); refreshChartSeries(); updateSpeedButton();
     document.querySelector('.money-card').classList.toggle('wealthy',state.money>=100000&&state.money<1000000);
     document.getElementById('ui-money').innerText = state.money >= 1000000 ? `$${(state.money / 1000000).toFixed(1)}M` : `$${state.money.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
     
     const dCost = calcDailyCost();
-    document.getElementById('ui-daily-cost').innerText = `-$${dCost.toFixed(2)}`;
+    document.getElementById('ui-daily-cost').innerText = `-$${compactMoney(dCost)}`;
     const wRent = calcWeeklyRent();
-    document.getElementById('ui-weekly-rent').innerText = `-$${wRent}`;
+    document.getElementById('ui-weekly-rent').innerText = `-$${compactMoney(wRent)}`;
     
 // 更新贷款卡片
     const loanCard = document.getElementById('card-loan-status');
@@ -717,7 +729,7 @@ function updateUI() {
         loanCard.className = "repayment-active";
         
         const nextPayment = loanPayment(state.loan, LOAN_DAILY_RATE).amount;
-        loanPaymentEl.innerText = `-$${nextPayment.toFixed(2)}`;
+        loanPaymentEl.innerText = `-$${compactMoney(nextPayment)}`;
     } else {
         loanCard.className = "repayment-idle";
         loanPaymentEl.innerText = "--";
@@ -740,10 +752,9 @@ function updateUI() {
 
     const lastProfitEl = document.getElementById('ui-last-profit');
     if (state.lastDayProfit !== null) {
-        const val = state.lastDayProfit.toFixed(2);
-        const sign = state.lastDayProfit >= 0 ? '+' : '';
-        const color = state.lastDayProfit >= 0 ? 'text-green-600' : 'text-red-500';
-        lastProfitEl.innerHTML = `<span class="${color}">${sign}$${val}</span>`;
+        const sign = state.lastDayProfit >= 0 ? '+' : '−';
+        const color = state.lastDayProfit >= 0 ? 'cash-positive' : 'cash-negative';
+        lastProfitEl.innerHTML = `<span class="${color}">${sign}$${compactMoney(state.lastDayProfit)}</span>`;
     } else {
         lastProfitEl.innerText = "--";
     }
@@ -752,20 +763,19 @@ function updateUI() {
     const m = state.minute.toString().padStart(2,'0');
     document.getElementById('ui-clock').innerText = `${h}:${m}`;
     document.getElementById('ui-day').innerText = `D${state.day}`;
-    document.getElementById('ui-pool').innerText = state.settings.mode === 'jam' ? '∞' : `${state.dailyPoolLeft}/${state.dailyPoolMax}`;
 
     const w = state.weather;
     document.getElementById('ui-weather-icon').innerText = CONFIG.weather.icons[w];
+    document.getElementById('ui-weather-name').innerText = CONFIG.weather.names[w] || '';
     let eff = CONFIG.weather.eff[w] * 100;
     
     const forced = state.activeBuffs.find(b => b.type === 'forcedWeather');
     const boosted = state.activeBuffs.find(b => b.type === 'solarEfficiency');
     if (boosted) eff *= boosted.val;
 
-    document.getElementById('ui-weather-eff').innerText = `PV:${eff.toFixed(0)}%${forced ? '(锁定)' : ''}`;
-    let effColor = 'text-slate-500';
-    if(w === 'rainy' || w === 'stormy') effColor = 'text-red-500';
-    if(boosted) effColor = 'text-green-600 font-black'; 
+    document.getElementById('ui-weather-eff').innerText = `PV:${eff.toFixed(0)}%${forced ? '(锁)' : ''}`;
+    // 光伏效率也按涨跌色：效率高＝涨＝红，阴雨低效＝跌＝绿。
+    const effColor = boosted ? 'cash-positive font-black' : eff >= 60 ? 'cash-positive' : 'cash-negative';
     document.getElementById('ui-weather-eff').className = `text-[8px] font-bold ${effColor} whitespace-nowrap`;
 
     let forecastW = state.forecast;
@@ -784,33 +794,19 @@ function updateUI() {
     const gpEl = document.getElementById('ui-grid-price');
     gpEl.innerText = state.settings.mode === 'offgrid' ? '离网' : `$${gp.toFixed(2)}`;
     gpEl.className = `font-mono font-bold text-lg ${gp>=1.5 ? 'text-red-500' : 'text-slate-700'}`;
+    // 每度毛利＝售价 − 成本电价；车旁跳出的金额就是它乘以这一回合送出的度数。
+    const marginEl = document.getElementById('ui-margin-rate');
+    if (marginEl) {
+        const rate = state.price - (state.settings.mode === 'offgrid' ? 0 : gp);
+        marginEl.innerText = `${rate >= 0 ? '+' : '−'}$${Math.abs(rate).toFixed(2)}`;
+        marginEl.className = rate >= 0 ? 'cash-positive' : 'cash-negative';
+    }
 
     const d = state.lastTickData;
-    document.getElementById('ui-load-text').innerText = `${d.load.toFixed(1)} / ${d.limit} kW`;
-    
-    const base = d.limit > 0 ? d.limit : 1;
-    const pSolar = (d.solar / base) * 100;
-    const pBatt = (d.batt / base) * 100;
-    const pGrid = (d.grid / base) * 100;
 
-    document.getElementById('bar-solar').style.width = `${pSolar}%`;
-    document.getElementById('bar-batt').style.width = `${pBatt}%`;
-    document.getElementById('bar-grid').style.width = `${pGrid}%`;
-    
-    const battBar = document.getElementById('bar-batt');
-    if (d.battAction === 'charge') battBar.innerText = '⚡';
-    else if (d.battAction === 'discharge') battBar.innerText = '🔋';
-    else battBar.innerText = '';
-
-    const overloadMsg = document.getElementById('ui-overload-msg');
-    const powerMonitor = document.getElementById('power-monitor');
-    if (d.reqLoad > d.limit) {
-        overloadMsg.classList.remove('hidden');
-        powerMonitor.classList.add('warning-pulse', 'border-red-400');
-    } else {
-        overloadMsg.classList.add('hidden');
-        powerMonitor.classList.remove('warning-pulse', 'border-red-400');
-    }
+    // 读数行同样只显示已经拥有的项目。
+    document.querySelector('.solar-reading').classList.toggle('hidden', state.assets.solar === 0);
+    document.querySelector('.battery-reading').classList.toggle('hidden', state.assets.battery === 0);
 
     document.getElementById('count-slow').innerText = state.assets.slowCharger;
     document.getElementById('count-fast').innerText = state.assets.fastCharger;
@@ -834,7 +830,6 @@ function updateUI() {
     updateCostDisplay('transformer', 'cost-transformer');
     updateCostDisplay('solar', 'cost-solar');
     updateCostDisplay('battery', 'cost-battery');
-    updateCostDisplay('marketing', 'cost-marketing');
 
     const buffBar = document.getElementById('ui-buff-bar');
     if (state.activeBuffs.length > 0) {
@@ -908,8 +903,7 @@ function showBillModal() {
     document.getElementById('bill-final').innerText = `$${final.toFixed(2)}`;
     
     const finalEl = document.getElementById('bill-final');
-    if (final < 0) finalEl.className = "font-mono font-bold text-red-600";
-    else finalEl.className = "font-mono font-bold text-green-600";
+    finalEl.className = final < 0 ? "font-mono font-bold cash-negative" : "font-mono font-bold cash-positive";
 
     openModal('bill-modal'); 
 }
@@ -917,7 +911,7 @@ function showBillModal() {
 function payBill() {
     const rent = state.pendingRent;
     state.money -= rent;
-    spawnFloatText(`租金 -$${rent}`, '#d26451');
+    spawnFloatText(`租金 -$${rent}`, LOSS);
     if (state.lastDayProfit !== null) state.lastDayProfit -= rent;
     if (state.history?.length) state.history[state.history.length - 1].profit -= rent;
     state.pendingRent = 0; state.weeksSurvived++;
@@ -927,20 +921,189 @@ function payBill() {
 }
 
 
-function updatePrice(v) {
-    state.price = Math.max(0.5, Math.min(3, Number(v) || 1.5));
-    document.getElementById('price-display').innerText = `$${state.price.toFixed(2)}`;
-    document.getElementById('price-slider').value = state.price;
-    updateUI(); saveGame(true);
+// 资金卡下方的小字账本用紧凑写法：1234 → 1.2k，211000 → 211k。
+function compactMoney(value) {
+    const a = Math.abs(value);
+    if (a >= 100000) return `${Math.round(a / 1000)}k`;
+    if (a >= 1000) return `${(a / 1000).toFixed(1)}k`;
+    return `${Math.round(a)}`;
 }
 
-function adjustPrice(delta) {
-    let newVal = state.price + delta;
-    newVal = Math.max(0.5, Math.min(3.0, newVal));
-    newVal = Math.round(newVal * 10) / 10;
-    updatePrice(newVal);
-    const slider = document.getElementById('price-slider');
-    if (slider) slider.value = newVal;
+const PRICE_MIN = 0.5, PRICE_MAX = 3, PRICE_STEP = 0.1;
+const PRICE_VALUES = (() => {
+    const out = [];
+    for (let v = PRICE_MIN; v <= PRICE_MAX + 1e-9; v = Math.round((v + PRICE_STEP) * 10) / 10) out.push(v);
+    return out;
+})();
+function priceIndexOf(value) {
+    let best = 0, gap = Infinity;
+    PRICE_VALUES.forEach((v, i) => { const d = Math.abs(v - value); if (d < gap) { gap = d; best = i; } });
+    return best;
+}
+function priceRowHeight() {
+    const wheel = document.getElementById('price-wheel');
+    const raw = wheel ? parseFloat(getComputedStyle(wheel).getPropertyValue('--row')) : 13;
+    return Number.isFinite(raw) && raw > 4 ? raw : 13;
+}
+// 窗口里露出几行（由 CSS 高度决定），居中偏移与淡出曲线都按它算。
+function priceWindowRows() {
+    const wheel = document.getElementById('price-wheel');
+    const row = priceRowHeight();
+    const height = wheel ? wheel.clientHeight : row * 5;
+    const rows = Math.round(height / row);
+    return Number.isFinite(rows) && rows > 0 ? rows : 5;
+}
+function wheelOffsetFor(index) { return (priceWindowRows() / 2 - index - 0.5) * priceRowHeight(); }
+function wheelIndexForOffset(offset) { return Math.round(priceWindowRows() / 2 - 0.5 - offset / priceRowHeight()); }
+function prefersReducedMotion() { return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches; }
+
+let wheelIndex = 0, wheelDragging = false;
+// 连续取值列：按偏移量把整列滑动到窗口里，越靠边越淡越小，中间一格高亮。
+function paintWheel(offsetPx) {
+    const list = document.getElementById('price-list');
+    if (!list) return;
+    const row = priceRowHeight(), centre = priceWindowRows() / 2;
+    list.style.transform = `translateY(${offsetPx.toFixed(2)}px)`;
+    const items = list.children;
+    for (let i = 0; i < items.length; i++) {
+        const distance = Math.abs(i + 0.5 + offsetPx / row - centre);
+        const el = items[i];
+        el.style.opacity = String(Math.max(0, Math.min(1, 1 - distance * 0.42)));
+        el.style.transform = `scale(${Math.max(0.74, 1 - distance * 0.13).toFixed(3)})`;
+        el.classList.toggle('is-current', distance < 0.5);
+    }
+}
+function snapWheelTo(index, animate = false) {
+    wheelIndex = Math.max(0, Math.min(PRICE_VALUES.length - 1, index));
+    const list = document.getElementById('price-list');
+    if (!list) return;
+    list.style.transition = animate && !prefersReducedMotion() ? 'transform .2s cubic-bezier(.22,.9,.3,1)' : 'none';
+    paintWheel(wheelOffsetFor(wheelIndex));
+}
+function refreshPriceWheel() {
+    const wheel = document.getElementById('price-wheel');
+    if (!wheel) return;
+    const display = document.getElementById('price-display');
+    if (display) display.textContent = `$${state.price.toFixed(2)}`;
+    wheel.setAttribute('aria-valuenow', state.price.toFixed(1));
+    wheel.setAttribute('aria-valuetext', `$${state.price.toFixed(2)}`);
+    const target = priceIndexOf(state.price);
+    if (!wheelDragging && target !== wheelIndex) snapWheelTo(target, true);
+}
+function updatePrice(v) {
+    const next = Math.round(Math.max(PRICE_MIN, Math.min(PRICE_MAX, Number(v) || 1.5)) * 10) / 10;
+    if (next === state.price) { refreshPriceWheel(); return; }
+    state.price = next;
+    refreshPriceWheel();
+    updateUI(); saveGame(true);
+}
+function adjustPrice(delta) { updatePrice(state.price + delta); }
+
+// 轮盘交互：拖动（带惯性吸附）、滚轮、上下键，点某一格也直接选中。
+function initPriceWheel() {
+    const wheel = document.getElementById('price-wheel'), list = document.getElementById('price-list');
+    if (!wheel || !list) return;
+    if (!list.children.length) {
+        PRICE_VALUES.forEach(v => {
+            const el = document.createElement('span');
+            el.className = 'wheel-item';
+            el.textContent = `$${v.toFixed(2)}`;
+            list.appendChild(el);
+        });
+    }
+    snapWheelTo(priceIndexOf(state.price), false);
+    let startY = 0, startOffset = 0, lastY = 0, lastT = 0, velocity = 0;
+    const offsetFor = index => wheelOffsetFor(index);
+    const commit = (index, animate = true) => {
+        index = Math.max(0, Math.min(PRICE_VALUES.length - 1, index));
+        snapWheelTo(index, animate);
+        const value = PRICE_VALUES[index];
+        if (value !== state.price) { state.price = value; updateUI(); saveGame(true); }
+        else refreshPriceWheel();
+    };
+    wheel.addEventListener('pointerdown', e => {
+        wheelDragging = true;
+        startY = lastY = e.clientY; startOffset = offsetFor(wheelIndex);
+        lastT = performance.now(); velocity = 0;
+        list.style.transition = 'none';
+        wheel.setPointerCapture?.(e.pointerId);
+    });
+    wheel.addEventListener('pointermove', e => {
+        if (!wheelDragging) return;
+        const now = performance.now();
+        velocity = (e.clientY - lastY) / Math.max(1, now - lastT);
+        lastY = e.clientY; lastT = now;
+        const offset = startOffset + (e.clientY - startY);
+        paintWheel(offset);
+        const index = wheelIndexForOffset(offset);
+        if (index !== wheelIndex && index >= 0 && index < PRICE_VALUES.length) {
+            wheelIndex = index;
+            state.price = PRICE_VALUES[index];
+            const display = document.getElementById('price-display');
+            if (display) display.textContent = `$${state.price.toFixed(2)}`;
+            wheel.setAttribute('aria-valuenow', state.price.toFixed(1));
+            wheel.setAttribute('aria-valuetext', `$${state.price.toFixed(2)}`);
+            updateUI();
+        }
+    });
+    const finish = e => {
+        if (!wheelDragging) return;
+        wheelDragging = false;
+        wheel.releasePointerCapture?.(e.pointerId);
+        const row = priceRowHeight();
+        const dragged = startOffset + (e.clientY - startY);
+        if (Math.abs(e.clientY - startY) < 5) {
+            // 直接点某一格：选中手指底下那一格，而不是按位移内容。
+            const rect = wheel.getBoundingClientRect();
+            const rows = Math.round((e.clientY - (rect.top + rect.height / 2)) / row);
+            commit(wheelIndex + rows);
+        } else {
+            // 拖动松手后按速度多滑一点，再吸附到最近一格。
+            commit(wheelIndexForOffset(dragged + velocity * 140));
+        }
+        wheel.focus({ preventScroll: true });
+    };
+    wheel.addEventListener('pointerup', finish);
+    wheel.addEventListener('pointercancel', finish);
+    wheel.addEventListener('wheel', e => {
+        if (!e.deltaY) return;
+        e.preventDefault();
+        commit(priceIndexOf(state.price) + (e.deltaY < 0 ? 1 : -1));
+    }, { passive: false });
+    wheel.addEventListener('keydown', e => {
+        if (e.key === 'ArrowUp') { e.preventDefault(); commit(priceIndexOf(state.price) + 1); }
+        if (e.key === 'ArrowDown') { e.preventDefault(); commit(priceIndexOf(state.price) - 1); }
+    });
+}
+
+// 顶栏那个按钮循环切换 1× → 4× → 8× → 暂停，只显示图标。
+const SPEED_ORDER = [500, 125, 62.5, 0], SPEED_TRIANGLES = [1, 2, 3, 0];
+function speedIconSVG(triangles) {
+    if (!triangles) return '<rect x="5" y="2.4" width="3.6" height="11.2" rx="1.2"></rect><rect x="11.4" y="2.4" width="3.6" height="11.2" rx="1.2"></rect>';
+    const w = triangles === 1 ? 6.4 : triangles === 2 ? 5.2 : 4.2, gap = triangles === 3 ? 0.9 : 1.2;
+    const total = triangles * w + (triangles - 1) * gap, x0 = (20 - total) / 2;
+    let out = '';
+    for (let i = 0; i < triangles; i++) { const x = x0 + i * (w + gap); out += `<path d="M${x.toFixed(1)} 2.6 L${(x + w - 1).toFixed(1)} 8 L${x.toFixed(1)} 13.4 Z"></path>`; }
+    return out;
+}
+function currentSpeedStep() {
+    if (state.paused) return 3;
+    return state.gameSpeed === 500 ? 0 : state.gameSpeed === 125 ? 1 : 2;
+}
+let speedIconKey = '';
+function updateSpeedButton() {
+    const btn = document.getElementById('speed-toggle');
+    if (!btn) return;
+    const step = currentSpeedStep();
+    if (String(step) !== speedIconKey) {
+        speedIconKey = String(step);
+        btn.innerHTML = `<svg viewBox="0 0 20 16" aria-hidden="true">${speedIconSVG(SPEED_TRIANGLES[step])}</svg>`;
+        btn.classList.toggle('paused', step === 3);
+    }
+    btn.setAttribute('aria-label', `游戏速度：${['1 倍', '4 倍', '8 倍', '已暂停'][step]}，点击切换`);
+}
+function cycleSpeed() {
+    setSpeed(SPEED_ORDER[(currentSpeedStep() + 1) % SPEED_ORDER.length]);
 }
 
 function setSpeed(ms) {
@@ -983,3 +1146,5 @@ function isLevelUnlocked(level) {
 
 // 更新关卡选择界面的显示状态
 function updateLevelSelectUI() { renderCampaign(); }
+
+initPriceWheel();
