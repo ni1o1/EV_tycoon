@@ -100,8 +100,7 @@ function selectOption(type, val) {
 
 function selectLevel(level) {
     if (level > 0 && !isLevelUnlocked(level)) return;
-    if (level === 0) { closeModal('level-select-modal'); openModal('start-modal'); return; }
-    closeModal('level-select-modal');
+    if (level === 0) { openModal('start-modal'); return; }
     startLevelGame(level);
 }
 
@@ -855,16 +854,6 @@ function updateUI() {
         buffBar.classList.add('hidden');
     }
 
-    const speedLabel = document.getElementById('ui-speed-label');
-    if (state.paused) {
-        speedLabel.innerText = "已暂停";
-        speedLabel.className = "text-[10px] text-slate-400 font-bold animate-pulse";
-    } else {
-        const ms = state.gameSpeed;
-        const txt = ms===500?"1x":ms===125?"4x":"8x";
-        speedLabel.innerText = "> " + txt;
-        speedLabel.className = "text-[10px] text-green-600 font-bold";
-    }
     updateDashboard();
     requestStationFrame();
 }

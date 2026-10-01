@@ -129,10 +129,8 @@ function launchGame() {
     scheduleNextEvent();
     if (currentLevel === 1) state.nextEventTime = null;
     initChart(); resizeCanvas();
-    state.paused = true;
-    updateUI(); saveGame(true);
-    document.getElementById('speed-1').focus({ preventScroll: true });
-    toast('点击 1× 开始营业');
+    setSpeed(500);
+    toast('营业开始 · 1×，可随时调整速度或暂停');
 }
 function currentGridPrice() {
     if (state.settings.mode === 'offgrid') return 0;
@@ -205,7 +203,8 @@ function resumeGame() {
     document.getElementById('price-slider').value = state.price;
     document.getElementById('price-display').textContent = `$${state.price.toFixed(2)}`;
     window.scrollTo(0, 0);
-    initChart(); resizeCanvas(); updateUI();
+    initChart(); resizeCanvas();
+    setSpeed(state.lastGameSpeed || 500);
     if (state.pendingRent > 0) showBillModal();
     else if (state.pendingEvent) {
         const ev = state.pendingEvent;
@@ -215,7 +214,7 @@ function resumeGame() {
         document.getElementById('ev-amt').textContent = ev.amount;
         openModal('event-modal');
     }
-    toast('已恢复，点击 1× 继续');
+    toast('已恢复 · 继续营业');
 }
 function retryCurrentGame() {
     closeModal('game-over-modal');
@@ -224,7 +223,7 @@ function retryCurrentGame() {
 }
 let helpPage = 0;
 const HELP_PAGES = [
-    ['开始经营', '点击 1× 开始，4× / 8× 加速。\nⅡ 暂停，空格键也可暂停。\n调价和购买设备都在屏幕底部。'],
+    ['开始经营', '默认 1× 自动开始，4× / 8× 加速；暂停键或空格键可暂停。\n速度、经营与关卡在屏幕顶部；调价和购买设备在底部。'],
     ['让资金转起来', '售价高，愿意进站的客户会减少。\n电费实时扣，维护与还款每天扣。\n留好租金；详细收支点「经营」查看。'],
     ['能源与车辆', '主屏曲线可点按读取功率。光伏优先，储能低价充、高价放。\n车型参数为模拟值；到站电量均值20%、标准差7%，限制在5%～50%。\n车旁显示容量、当前电量、实际/车辆上限功率。桩与站点供电也会限速。']
 ];
@@ -240,14 +239,7 @@ function changeHelp(delta) { helpPage = Math.max(0, Math.min(HELP_PAGES.length -
 function closeHelp() { closePanel('help-modal'); }
 function openGoal() { openModal('goal-modal'); }
 function closePanel(id) { closeModal(id); resumeAfterModal(); }
-function openDetails() { openModal('details-modal'); switchDetails('finance'); }
-function switchDetails(view) {
-    for (const kind of ['finance', 'energy']) {
-        document.getElementById(kind + '-view').classList.toggle('hidden', kind !== view);
-        document.getElementById(kind + '-tab').setAttribute('aria-selected', String(kind === view));
-    }
-    if (view === 'energy') { if (myChart) myChart.resize(); else initChart(); }
-}
+function openDetails() { openModal('details-modal'); }
 function openBankFromDetails() {
     if (!technologyAvailable('bank')) { openResearch(); return; }
     openLoanModal(); closeModal('details-modal');
@@ -279,12 +271,14 @@ function updateDashboard() {
     document.getElementById('ui-occupancy').textContent = `${state.cars.length} / ${state.assets.slowCharger + state.assets.fastCharger} 正在充电`;
     document.getElementById('ui-today-profit').textContent = `${state.currentDayProfit >= 0 ? '+' : '−'}$${Math.abs(state.currentDayProfit).toFixed(1)}`;
     document.getElementById('ui-total-energy').textContent = `${Math.round(state.totalEnergy || 0)} kWh`;
-    document.getElementById('compact-battery').textContent = state.assets.battery ? `储能 ${Math.round(state.batteryKwh)} kWh` : '';
+    const hasBattery = state.assets.battery > 0;
+    document.getElementById('ui-battery').classList.toggle('hidden', hasBattery === false);
+    document.getElementById('batt-status-text').classList.toggle('hidden', hasBattery === false);
+    document.getElementById('compact-battery').classList.toggle('hidden', hasBattery === false);
+    document.getElementById('compact-battery').textContent = hasBattery ? `储能 ${Math.round(state.batteryKwh)} kWh` : '';
     document.getElementById('ui-tick-revenue').textContent = `+$${Number(d.revenue || 0).toFixed(2)}`;
     document.getElementById('ui-tick-cost').textContent = `−$${Number(d.cost || 0).toFixed(2)}`;
     const margin = state.price - currentGridPrice();
-    document.getElementById('price-note').textContent = state.settings.mode === 'offgrid' ? '离网供电 · 光伏优先，储能补充' : `每度电价差 ${margin < 0 ? '−' : '+'}$${Math.abs(margin).toFixed(2)} · 不含维护与租金`;
-    document.getElementById('price-note').classList.toggle('danger', margin < 0);
     let advice = mission?.lesson || '关注客流与电价，先提高设备利用率，再投入扩建。';
     if (available < 0) advice = '资金低于准备金。先暂停扩建，留出即将到期的租金和维护费。';
     else if (state.settings.mode === 'offgrid' && d.unmet > 0) advice = '光储供电不足，车辆正在限速。增加光伏或储能，并为夜间客流留电。';

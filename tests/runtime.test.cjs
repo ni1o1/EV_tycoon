@@ -13,12 +13,12 @@ function boot(storage={}, seed=7){
  for(const file of ['vehicles.js','energy.js','finance.js','station-art.js','game.js','campaign.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../docs',file),'utf8'),dom.getInternalVMContext(),{filename:file});
  return {win,timers,run:code=>vm.runInContext(code,dom.getInternalVMContext()),close:()=>win.close()};
 }
-test('campaign initializes paused, restrictions are enforced by logic and UI, and saved game restores exact state',()=>{
+test('campaign initializes running at 1x, restrictions are enforced by logic and UI, and saved game restores exact state',()=>{
  const b=boot();assert.equal(b.win.document.querySelectorAll('.mission:disabled').length,9);
- b.run('startLevelGame(1)');assert.equal(b.run('state.paused'),true);assert.equal(b.run('state.lastTickData.limit'),20);
+ b.run('startLevelGame(1)');assert.equal(b.run('state.paused'),false);assert.equal(b.run('state.gameSpeed'),500);assert.equal(b.run('state.lastTickData.limit'),20);
  b.run("buyAsset('solar'); buyAsset('fastCharger'); takeLoan()");assert.equal(b.run('state.money'),1800);assert.equal(b.run('state.assets.solar'),0);
  b.run("buyAsset('slowCharger'); adjustPrice(.1); saveGame(true)");assert.equal(b.run('state.assets.slowCharger'),2);
- const saved=b.win.localStorage.getItem('ev_tycoon_save_v2');const c=boot({'ev_tycoon_save_v2':saved});c.run('resumeGame()');assert.equal(c.run('state.money'),1000);assert.equal(c.run('state.price'),1.6);assert.equal(c.run('state.assets.slowCharger'),2);assert.equal(c.run('state.paused'),true);b.close();c.close();
+ const saved=b.win.localStorage.getItem('ev_tycoon_save_v2');const c=boot({'ev_tycoon_save_v2':saved});c.run('resumeGame()');assert.equal(c.run('state.money'),1000);assert.equal(c.run('state.price'),1.6);assert.equal(c.run('state.assets.slowCharger'),2);assert.equal(c.run('state.paused'),false);b.close();c.close();
 });
 test('speed changes maintain exactly one tick timer, dialog closing respects existing pause',()=>{
  const b=boot();b.run('startLevelGame(2);career.unlocks=TECHNOLOGIES.map(t=>t.key);setSpeed(500);setSpeed(125);setSpeed(62.5)');

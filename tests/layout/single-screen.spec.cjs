@@ -3,7 +3,7 @@ const sizes=[{width:320,height:568},{width:360,height:640},{width:390,height:844
 async function assertSingleScreen(page, game=false){
  const dimensions=await page.evaluate(()=>({width:innerWidth,height:innerHeight,scrollWidth:document.documentElement.scrollWidth,scrollHeight:document.documentElement.scrollHeight}));
  expect(dimensions.scrollHeight).toBeLessThanOrEqual(dimensions.height);expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.width);
- const selectors=game?['.hud','.operating-stats','.game-status','.station-stage','.energy-panel','.pricing','.asset-grid','.bottom-controls']:['.home-actions','#mission-list'];
+ const selectors=game?['.hud','.operating-stats','.game-status','.station-stage','.energy-panel','.pricing','.asset-grid','.top-controls']:['.home-actions','#mission-list'];
  for(const selector of selectors){const box=await page.locator(selector).boundingBox();expect(box,selector).not.toBeNull();expect(box.y,selector).toBeGreaterThanOrEqual(0);expect(box.y+box.height,selector).toBeLessThanOrEqual(dimensions.height+1);expect(box.x+box.width,selector).toBeLessThanOrEqual(dimensions.width+1)}
  for(const selector of game?['.asset-button','.hud-card','.operating-stats>div','.operating-stats>button','.game-status','.pricing-line','.power-strip']:['.mission']){
   const fitting=await page.locator(selector).evaluateAll(elements=>elements.every(el=>el.scrollHeight<=el.clientHeight+1&&el.scrollWidth<=el.clientWidth+1));expect(fitting,selector+' content must fit, not be clipped').toBeTruthy();
@@ -13,7 +13,7 @@ async function assertSingleScreen(page, game=false){
 for(const size of sizes)test(`${size.width}×${size.height}: menu and gameplay fit one screen even after expansion`,async({page})=>{
  await page.setViewportSize(size);const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto('/');await expect(page.locator('.mission')).toHaveCount(10);await assertSingleScreen(page);
- await page.getByRole('button',{name:'第 1 关 街角开业，经营 28 天，至少 2 台桩、交付 1,800 kWh',exact:true}).click();await assertSingleScreen(page,true);await expect(page.locator('#chart-container canvas')).toHaveCount(1);
+ await page.getByRole('button',{name:'第 1 关 街角开业，经营 28 天，至少 2 台桩、交付 1,800 kWh',exact:true}).click();await assertSingleScreen(page,true);await expect(page.locator('#chart-container canvas')).toHaveCount(1);await expect(page.locator('#speed-1')).toHaveAttribute('aria-pressed','true');expect(await page.evaluate(()=>state.paused)).toBe(false);const topBox=await page.locator('.top-controls').boundingBox();const hudBox=await page.locator('.hud').boundingBox();expect(topBox.y).toBeLessThan(hudBox.y);
  await page.evaluate(()=>{state.money=999999.99;updateUI()});await assertSingleScreen(page,true);
  if(size.width===390){await page.locator('#toast').waitFor({state:'hidden'});await page.screenshot({path:'test-results/compact-normal-phone.png'})}
  await page.evaluate(()=>{state.assets.slowCharger=25;state.assets.fastCharger=25;state.money=2000000;state.activeBuffs=Array.from({length:10},(_,i)=>({name:'测试事件'+i,type:'trafficMult',val:1,daysLeft:5,icon:'⚡'}));updateUI();resizeCanvas()});
@@ -29,7 +29,7 @@ test('optional goal, financial and energy panels retain pause and leave all main
  await page.locator('#speed-4').click();await expect(page.locator('#speed-4')).toHaveAttribute('aria-pressed','true');
  await page.getByRole('button',{name:'查看关卡目标',exact:true}).click();await expect(page.locator('#goal-modal')).toBeVisible();await expect(page.locator('#speed-0')).toHaveAttribute('aria-pressed','true');
  await page.getByRole('button',{name:'关闭关卡目标',exact:true}).click();await expect(page.locator('#speed-4')).toHaveAttribute('aria-pressed','true');
- await page.getByRole('button',{name:'经营',exact:true}).click();await page.getByRole('tab',{name:'能源',exact:true}).click();await expect(page.locator('#chart-container canvas')).toHaveCount(1);await page.getByRole('tab',{name:'收支',exact:true}).click();
+ await page.getByRole('button',{name:'经营',exact:true}).click();await expect(page.locator('#details-modal')).toBeVisible();await expect(page.locator('#energy-view')).toHaveCount(0);await expect(page.locator('#chart-container canvas')).toHaveCount(1);
  await page.getByRole('button',{name:'借款与还款计划 打开银行 →',exact:true}).click();await expect(page.locator('#details-modal')).toBeHidden();await expect(page.locator('#loan-modal')).toBeVisible();await page.getByRole('button',{name:'取消',exact:true}).click();await expect(page.locator('#speed-4')).toHaveAttribute('aria-pressed','true');await assertSingleScreen(page,true);
  await page.locator('#speed-0').click();await page.getByRole('button',{name:'玩法指南',exact:true}).click();await page.locator('#help-next').click();await expect(page.locator('#help-page')).toHaveText('2 / 3');await page.getByRole('button',{name:'关闭玩法指南',exact:true}).click();await expect(page.locator('#speed-0')).toHaveAttribute('aria-pressed','true');
 });
@@ -43,9 +43,9 @@ test('small-phone optional panels fit without scrolling and menu navigation clea
 });
 
 test('research observations stay visible and real cash/energy changes are shown on the main screen',async({page})=>{
- await page.setViewportSize({width:390,height:844});await page.goto('/');await page.evaluate(()=>{career.unlocks=TECHNOLOGIES.map(t=>t.key);startLevelGame(2)});
- for(const id of ['ui-last-profit','ui-tick-profit','ui-weather-eff','ui-forecast','ui-daily-cost','ui-loan-payment','ui-weekly-rent','ui-rent-countdown','ui-battery','batt-status-text','ui-load-text','ui-grid-price','ui-tick-revenue','ui-tick-cost','ui-today-profit'])await expect(page.locator('#'+id)).toBeVisible();
- await page.locator('#btn-battery').click();await expect(page.locator('#ui-tick-profit')).toHaveText('−$1800.00');await expect(page.locator('.float-text')).toContainText('购买 -$1800');
+ await page.setViewportSize({width:390,height:844});await page.goto('/');await page.evaluate(()=>{career.unlocks=TECHNOLOGIES.map(t=>t.key);startLevelGame(2);setSpeed(0)});
+ for(const id of ['ui-last-profit','ui-tick-profit','ui-weather-eff','ui-forecast','ui-daily-cost','ui-loan-payment','ui-weekly-rent','ui-rent-countdown','ui-load-text','ui-grid-price','ui-tick-revenue','ui-tick-cost','ui-today-profit'])await expect(page.locator('#'+id)).toBeVisible();
+ await page.locator('#btn-battery').click();await expect(page.locator('#ui-battery')).toBeVisible();await expect(page.locator('#batt-status-text')).toBeVisible();await expect(page.locator('#ui-tick-profit')).toHaveText('−$1800.00');await expect(page.locator('.float-text')).toContainText('购买 -$1800');
  await page.evaluate(()=>{state.hour=2;state.batteryKwh=0;processEnergy(.2);updateUI()});await expect(page.locator('#ui-tick-profit')).toHaveClass(/cash-negative/);await expect(page.locator('#batt-status-text')).toHaveText('充电中');
  await expect(page.locator('#ui-tick-revenue')).toHaveText('+$0.00');await expect(page.locator('#ui-tick-cost')).toHaveText('−$0.67');
  await expect(page.locator('#ui-grid-price')).toHaveText('$0.35');await expect(page.locator('.pricing-line')).toContainText('/kWh');
@@ -58,7 +58,7 @@ test('research observations stay visible and real cash/energy changes are shown 
  await page.evaluate(()=>{delete state.chartData.demand;saveGame(true);showCampaign();resumeGame()});await expect(page.locator('#chart-container canvas')).toHaveCount(1);await assertSingleScreen(page,true);
 });
 test('real customers drive in, pause with the game, and drive away without charging twice',async({page})=>{
- await page.setViewportSize({width:390,height:844});await page.goto('/');await page.evaluate(()=>{career.unlocks=TECHNOLOGIES.map(t=>t.key);startLevelGame(2)});
+ await page.setViewportSize({width:390,height:844});await page.goto('/');await page.evaluate(()=>{career.unlocks=TECHNOLOGIES.map(t=>t.key);startLevelGame(2);setSpeed(0)});
  await page.evaluate(()=>{window.animationCustomer={...createVehicle('🚗',()=>.5),type:'slow',slot:0,priceLocked:2,ticksLeft:100};state.cars.push(animationCustomer);draw();setSpeed(500);clearTimeout(state.timer)});
  await expect.poll(()=>page.evaluate(()=>StationArt.inspect().find(v=>v.phase==='entering')?.pose?.x??-100)).toBeGreaterThan(0);
  await page.evaluate(()=>{setSpeed(0);draw()});const frozen=await page.evaluate(()=>StationArt.inspect()[0].pose);await page.waitForTimeout(200);expect(await page.evaluate(()=>StationArt.inspect()[0].pose)).toEqual(frozen);
@@ -80,7 +80,7 @@ test('cash and every multi-part goal remain legible on a small phone',async({pag
 });
 
 test('tutorial hides locked purchases while keeping achievement progress and energy costs accessible',async({page})=>{
- await page.setViewportSize({width:320,height:568});await page.goto('/');await page.evaluate(()=>startLevelGame(1));
+ await page.setViewportSize({width:320,height:568});await page.goto('/');await page.evaluate(()=>{startLevelGame(1);setSpeed(0)});
  for(const id of ['btn-fast','btn-solar','btn-battery','btn-marketing'])await expect(page.locator('#'+id)).toBeHidden();
  await expect(page.locator('#btn-loan')).toBeHidden();await page.locator('#station-live').click();await expect(page.locator('#research-modal')).toBeVisible();await expect(page.locator('#loan-modal')).toBeHidden();await page.getByRole('button',{name:'关闭技术与成就',exact:true}).click();
  await page.evaluate(()=>{state.day=15;state.served=10;state.totalEnergy=800;checkTechnologyUnlocks();updateUI()});await expect(page.locator('#btn-fast')).toBeVisible();await expect(page.locator('#btn-fast .asset-state')).toHaveText('购买 +');await expect(page.locator('#station-live')).toContainText('光伏');await assertSingleScreen(page,true);
