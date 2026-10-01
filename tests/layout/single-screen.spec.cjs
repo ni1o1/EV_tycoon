@@ -12,8 +12,9 @@ async function assertSingleScreen(page, game=false){
 }
 for(const size of sizes)test(`${size.width}×${size.height}: menu and gameplay fit one screen even after expansion`,async({page})=>{
  await page.setViewportSize(size);const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto('/');await expect(page.locator('.mission')).toHaveCount(6);await assertSingleScreen(page);
- await page.getByRole('button',{name:'第 1 关 第一度电，7 天交付 1,600 kWh，净资金 ≥ $2,300',exact:true}).click();await assertSingleScreen(page,true);await expect(page.locator('#chart-container canvas')).toHaveCount(1);
+ await page.goto('/');await expect(page.locator('.mission')).toHaveCount(10);await assertSingleScreen(page);
+ await page.getByRole('button',{name:'第 1 关 街角开业，经营 28 天，至少 2 台桩、交付 1,800 kWh',exact:true}).click();await assertSingleScreen(page,true);await expect(page.locator('#chart-container canvas')).toHaveCount(1);
+ await page.evaluate(()=>{state.money=999999.99;updateUI()});await assertSingleScreen(page,true);
  if(size.width===390){await page.locator('#toast').waitFor({state:'hidden'});await page.screenshot({path:'test-results/compact-normal-phone.png'})}
  await page.evaluate(()=>{state.assets.slowCharger=25;state.assets.fastCharger=25;state.money=2000000;state.activeBuffs=Array.from({length:10},(_,i)=>({name:'测试事件'+i,type:'trafficMult',val:1,daysLeft:5,icon:'⚡'}));updateUI();resizeCanvas()});
  await assertSingleScreen(page,true);
@@ -24,7 +25,7 @@ for(const size of sizes)test(`${size.width}×${size.height}: menu and gameplay f
  expect(errors).toEqual([]);
 });
 test('optional goal, financial and energy panels retain pause and leave all main controls accessible',async({page})=>{
- await page.setViewportSize({width:390,height:844});await page.goto('/');await page.evaluate(()=>startLevelGame(2));
+ await page.setViewportSize({width:390,height:844});await page.goto('/');await page.evaluate(()=>{career.unlocks=TECHNOLOGIES.map(t=>t.key);startLevelGame(2)});
  await page.locator('#speed-4').click();await expect(page.locator('#speed-4')).toHaveAttribute('aria-pressed','true');
  await page.getByRole('button',{name:'查看关卡目标',exact:true}).click();await expect(page.locator('#goal-modal')).toBeVisible();await expect(page.locator('#speed-0')).toHaveAttribute('aria-pressed','true');
  await page.getByRole('button',{name:'关闭关卡目标',exact:true}).click();await expect(page.locator('#speed-4')).toHaveAttribute('aria-pressed','true');
@@ -34,15 +35,15 @@ test('optional goal, financial and energy panels retain pause and leave all main
 });
 test('small-phone optional panels fit without scrolling and menu navigation clears dialog focus traps',async({page})=>{
  await page.setViewportSize({width:320,height:568});
- for(const action of ['openGoal()','openDetails()','openLoanModal()','openHelp()','selectLevel(0)']){
-  await page.goto('/');await page.evaluate(()=>startLevelGame(2));await page.evaluate(action);
+ for(const action of ['openGoal()','openResearch()','openDetails()','openLoanModal()','openHelp()','selectLevel(0)']){
+  await page.goto('/');await page.evaluate(()=>{career.unlocks=TECHNOLOGIES.map(t=>t.key);startLevelGame(2)});await page.evaluate(action);
   const sizing=await page.locator('[aria-modal="true"]').evaluate(el=>{const sheet=el.firstElementChild;return {height:sheet.clientHeight,scroll:sheet.scrollHeight}});expect(sizing.scroll,action).toBeLessThanOrEqual(sizing.height+1);
   await page.evaluate(()=>showCampaign());await expect(page.locator('[aria-modal="true"]')).toHaveCount(0);await assertSingleScreen(page);
  }
 });
 
 test('research observations stay visible and real cash/energy changes are shown on the main screen',async({page})=>{
- await page.setViewportSize({width:390,height:844});await page.goto('/');await page.evaluate(()=>startLevelGame(2));
+ await page.setViewportSize({width:390,height:844});await page.goto('/');await page.evaluate(()=>{career.unlocks=TECHNOLOGIES.map(t=>t.key);startLevelGame(2)});
  for(const id of ['ui-last-profit','ui-tick-profit','ui-weather-eff','ui-forecast','ui-daily-cost','ui-loan-payment','ui-weekly-rent','ui-rent-countdown','ui-battery','batt-status-text','ui-load-text','ui-grid-price','ui-tick-revenue','ui-tick-cost','ui-today-profit'])await expect(page.locator('#'+id)).toBeVisible();
  await page.locator('#btn-battery').click();await expect(page.locator('#ui-tick-profit')).toHaveText('−$1800.00');await expect(page.locator('.float-text')).toContainText('购买 -$1800');
  await page.evaluate(()=>{state.hour=2;state.batteryKwh=0;processEnergy(.2);updateUI()});await expect(page.locator('#ui-tick-profit')).toHaveClass(/cash-negative/);await expect(page.locator('#batt-status-text')).toHaveText('充电中');
@@ -57,7 +58,7 @@ test('research observations stay visible and real cash/energy changes are shown 
  await page.evaluate(()=>{delete state.chartData.demand;saveGame(true);showCampaign();resumeGame()});await expect(page.locator('#chart-container canvas')).toHaveCount(1);await assertSingleScreen(page,true);
 });
 test('real customers drive in, pause with the game, and drive away without charging twice',async({page})=>{
- await page.setViewportSize({width:390,height:844});await page.goto('/');await page.evaluate(()=>startLevelGame(2));
+ await page.setViewportSize({width:390,height:844});await page.goto('/');await page.evaluate(()=>{career.unlocks=TECHNOLOGIES.map(t=>t.key);startLevelGame(2)});
  await page.evaluate(()=>{window.animationCustomer={...createVehicle('🚗',()=>.5),type:'slow',slot:0,priceLocked:2,ticksLeft:100};state.cars.push(animationCustomer);draw();setSpeed(500);clearTimeout(state.timer)});
  await expect.poll(()=>page.evaluate(()=>StationArt.inspect().find(v=>v.phase==='entering')?.pose?.x??-100)).toBeGreaterThan(0);
  await page.evaluate(()=>{setSpeed(0);draw()});const frozen=await page.evaluate(()=>StationArt.inspect()[0].pose);await page.waitForTimeout(200);expect(await page.evaluate(()=>StationArt.inspect()[0].pose)).toEqual(frozen);
@@ -70,10 +71,18 @@ test('real customers drive in, pause with the game, and drive away without charg
 
 test('cash and every multi-part goal remain legible on a small phone',async({page})=>{
  await page.setViewportSize({width:320,height:568});await page.goto('/');
- for(let level=1;level<=6;level++){
+ for(let level=1;level<=10;level++){
   await page.evaluate(level=>startLevelGame(level),level);await assertSingleScreen(page,true);
   await page.getByRole('button',{name:'查看关卡目标',exact:true}).click();
   const fits=await page.locator('#goal-modal .sheet').evaluate(el=>el.scrollHeight<=el.clientHeight+1);expect(fits,`level ${level} goal`).toBeTruthy();
   await page.getByRole('button',{name:'关闭关卡目标',exact:true}).click();
  }
+});
+
+test('tutorial exposes locked devices and achievement progress without hiding energy or costs',async({page})=>{
+ await page.setViewportSize({width:320,height:568});await page.goto('/');await page.evaluate(()=>startLevelGame(1));
+ for(const id of ['btn-fast','btn-solar','btn-battery','btn-marketing']){await expect(page.locator('#'+id)).toBeVisible();await expect(page.locator('#'+id)).toBeDisabled()}
+ await expect(page.locator('#btn-loan')).toHaveText('银行 🔒');await page.locator('#btn-loan').click();await expect(page.locator('#research-modal')).toBeVisible();await expect(page.locator('#loan-modal')).toBeHidden();await page.getByRole('button',{name:'关闭技术与成就',exact:true}).click();
+ await page.evaluate(()=>{state.day=15;state.served=10;state.totalEnergy=800;checkTechnologyUnlocks();updateUI()});await expect(page.locator('#btn-fast .asset-state')).toHaveText('购买 +');await expect(page.locator('#station-live')).toContainText('光伏');await assertSingleScreen(page,true);
+ await page.locator('#station-live').click();await expect(page.locator('.research-row')).toHaveCount(5);await page.getByRole('button',{name:'关闭技术与成就',exact:true}).click();await assertSingleScreen(page,true);
 });

@@ -63,7 +63,7 @@ let unlockedLevels = []; // 已解锁的关卡
 
 function getInitialState() {
     return {
-        money: CONFIG.initialMoney, day: 1, hour: 8, minute: 0, 
+        campaignRevision: 3, claimedMilestones: [], money: CONFIG.initialMoney, day: 1, hour: 8, minute: 0,
         paused: true, gameSpeed: 500, lastGameSpeed: 500,
         assets: { slowCharger: 1, fastCharger: 0, solar: 0, battery: 0, transformer: 0 }, 
         currentCosts: { ...CONFIG.baseCosts },
@@ -108,6 +108,7 @@ function selectLevel(level) {
 
 function startLevelGame(level) {
     clearTimeout(state.timer);
+    if(!CAMPAIGN.some(l=>l.id===level))return;
     currentLevel = level;
     state = getInitialState();
     const mission = CAMPAIGN.find(l => l.id === level);
@@ -199,7 +200,7 @@ function closeModal(id) {
 
 // ================= 贷款系统逻辑 =================
 function openLoanModal() {
-    if (currentLevel === 1) return;
+    if (!technologyAvailable('bank')) {openResearch();return;}
     openModal('loan-modal');
     if (state.loan.active) {
         document.getElementById('loan-form').classList.add('hidden');
@@ -237,7 +238,7 @@ function updateLoanPreview() {
 
 function takeLoan() {
     const data = window.previewLoanData;
-    if (!data || state.loan.active || currentLevel === 1) return;
+    if (!data || state.loan.active || !technologyAvailable('bank')) return;
 
     state.money += data.principal;
     
@@ -317,7 +318,8 @@ function checkEndGame() {
     if (state.ended) return true;
     if (state.money < 0) { showGameOver(false); return true; }
     if (state.pendingRent > 0) return false;
-    const mission = CAMPAIGN.find(l => l.id === currentLevel);
+    checkTechnologyUnlocks();
+    const mission = currentMission();
     const days = state.targetDays || CONFIG.targetDays;
     if (state.day > days && !state.victoryAchieved) {
         const passed = !mission || mission.goal(state);
@@ -333,22 +335,30 @@ function showGameOver(victory, missedGoal = false) {
     state.paused = true; state.ended = true; clearTimeout(state.timer);
     document.querySelectorAll('[id$="-modal"]').forEach(el => { if (el.id !== 'game-over-modal') { el.classList.add('hidden'); el.removeAttribute('aria-modal'); } });
     modalOpenCount = 0;
-    const mission = CAMPAIGN.find(l => l.id === currentLevel);
+    const mission = currentMission();
+    const completedId=state.campaignRevision===CAMPAIGN_REVISION?currentLevel:LEGACY_LEVEL_MAP[currentLevel];
     if (victory && currentLevel) {
-        unlockLevel(currentLevel + 1);
+        unlockLevel(completedId + 1);
         const net = campaignCash(state);
         const score = net >= mission.stars[1] ? 3 : net >= mission.stars[0] ? 2 : 1;
-        progress[currentLevel] = Math.max(progress[currentLevel] || 0, score);
-        writeStorage('ev_tycoon_progress_v2', progress);
+        if(state.campaignRevision===CAMPAIGN_REVISION){
+            progress[completedId]=Math.max(progress[completedId]||0,score);
+            writeStorage('ev_tycoon_progress_v3',progress);
+        }else{
+            legacyProgress[currentLevel]=Math.max(legacyProgress[currentLevel]||0,score);
+            writeStorage('ev_tycoon_progress_v2',legacyProgress);
+            const learned=currentLevel>=2?TECHNOLOGIES.map(t=>t.key):['marketing','fastCharger','solar'];
+            career.unlocks=[...new Set([...career.unlocks,...learned])];writeStorage('ev_tycoon_career_v3',career);
+        }
     }
     document.getElementById('go-icon').innerText = victory ? '✦' : '↺';
-    document.getElementById('go-title').innerText = victory ? (currentLevel === 6 ? '充电帝国，建成！' : '经营目标达成') : missedGoal ? '离目标还差一点' : '资金链断裂';
-    document.getElementById('go-desc').innerText = victory ? `${state.levelName}完成，最终资金 $${state.money.toFixed(0)}。${currentLevel && currentLevel < 6 ? '下一关已解锁。' : '继续挑战更好的经营成绩。'}` : missedGoal ? `已完成 ${state.targetDays} 天经营，但还未达成「${mission.objective}」。调整投资节奏，再试一次。` : '提前预留租金，优先提高充电桩利用率，再逐步扩建。';
+    document.getElementById('go-title').innerText = victory ? (completedId === CAMPAIGN.length ? '充电帝国，建成！' : '经营目标达成') : missedGoal ? '离目标还差一点' : '资金链断裂';
+    document.getElementById('go-desc').innerText = victory ? `${state.levelName}完成，最终资金 $${state.money.toFixed(0)}。${currentLevel && completedId < CAMPAIGN.length ? '下一关已解锁。' : '继续挑战更好的经营成绩。'}` : missedGoal ? `已完成 ${state.targetDays} 天经营，但还未达成「${mission.objective}」。调整投资节奏，再试一次。` : '提前预留租金，优先提高充电桩利用率，再逐步扩建。';
     document.getElementById('final-days').innerText = Math.max(0, state.day - 1);
     document.getElementById('btn-continue').classList.toggle('hidden', !victory);
     const next = document.getElementById('btn-next-level');
-    next.classList.toggle('hidden', !victory || !currentLevel || currentLevel >= 6);
-    next.onclick = () => { closeModal('game-over-modal'); startLevelGame(currentLevel + 1); };
+    next.classList.toggle('hidden', !victory || !currentLevel || completedId >= CAMPAIGN.length);
+    next.onclick = () => { closeModal('game-over-modal'); startLevelGame(completedId + 1); };
     try { localStorage.removeItem('ev_tycoon_save_v2'); } catch (_) {}
     openModal('game-over-modal');
 }
@@ -552,7 +562,7 @@ function calcDailyCost() {
 }
 
 function calcWeeklyRent() {
-    const mission = CAMPAIGN.find(l => l.id === currentLevel);
+    const mission = currentMission();
     if (mission) return mission.rent + state.weeksSurvived * mission.rentGrowth;
     let base = CONFIG.baseWeeklyRent; 
     let growth = CONFIG.rentGrowth;
@@ -650,7 +660,7 @@ function getAssetCost(type) {
 }
 
 function buyAsset(type) {
-    if (!Object.hasOwn(CONFIG.baseCosts, type) || (currentLevel === 1 && ['solar', 'battery', 'fastCharger'].includes(type)) || (type === 'transformer' && state.settings.mode === 'offgrid')) return;
+    if (!Object.hasOwn(CONFIG.baseCosts, type) || purchaseRestriction(type)) return;
     const cost = getAssetCost(type);
     if (type === 'slowCharger' && state.settings.mode === 'super') { spawnFloatText("模式限制: 禁止慢充", "#ef4444"); return; }
     if (state.money >= cost) {
@@ -692,6 +702,7 @@ function showMoneyChange(amount, reason) {
 }
 
 function updateUI() {
+    document.querySelector('.money-card').classList.toggle('wealthy',state.money>=100000&&state.money<1000000);
     document.getElementById('ui-money').innerText = state.money >= 1000000 ? `$${(state.money / 1000000).toFixed(1)}M` : `$${state.money.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
     
     const dCost = calcDailyCost();
@@ -957,18 +968,20 @@ function setSpeed(ms) {
 
 // 加载已解锁的关卡
 function loadUnlockedLevels() {
-    const saved = readStorage('ev_tycoon_unlocked_levels', [1]);
-    unlockedLevels = Array.isArray(saved) ? [...new Set([1, ...saved.filter(n => Number.isInteger(n) && n >= 1 && n <= 6)])] : [1];
+    const saved=readStorage('ev_tycoon_unlocked_levels_v3',null);
+    if(Array.isArray(saved))unlockedLevels=[...new Set([1,...saved.filter(n=>Number.isInteger(n)&&n>=1&&n<=CAMPAIGN.length)])];
+    else {const old=readStorage('ev_tycoon_unlocked_levels',[1]);unlockedLevels=[...new Set([1,...(Array.isArray(old)?old.map(n=>LEGACY_LEVEL_MAP[n]).filter(Boolean):[]),...Object.keys(legacyProgress||{}).map(id=>LEGACY_LEVEL_MAP[id]+1).filter(id=>id<=CAMPAIGN.length),...Object.keys(progress).filter(id=>progress[id]).map(id=>Number(id)+1).filter(id=>id<=CAMPAIGN.length)])];saveUnlockedLevels()}
+    writeStorage('ev_tycoon_career_v3',career);
 }
 
 
 // 保存已解锁的关卡
-function saveUnlockedLevels() { writeStorage('ev_tycoon_unlocked_levels', unlockedLevels); }
+function saveUnlockedLevels() { writeStorage('ev_tycoon_unlocked_levels_v3', unlockedLevels); }
 
 
 // 解锁新关卡
 function unlockLevel(level) {
-    if (level <= 6 && !unlockedLevels.includes(level)) {
+    if (level >= 1 && level <= CAMPAIGN.length && !unlockedLevels.includes(level)) {
         unlockedLevels.push(level);
         saveUnlockedLevels();
     }
