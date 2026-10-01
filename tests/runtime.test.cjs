@@ -73,12 +73,12 @@ test('cash goals and stars exclude outstanding debt and enforce all flagship req
 });
 test('free modes reset prior restrictions and inflation without duplicate off-grid discounts',()=>{
  const b=boot();b.run("startLevelGame(1);selectedSettings={city:'gz',loc:'com',mode:'super'};startGame()");assert.equal(b.run('state.assets.slowCharger'),0);assert.equal(b.run('state.assets.fastCharger'),1);assert.equal(b.win.document.getElementById('btn-fast').disabled,false);
- b.run("selectedSettings.mode='offgrid';startGame()");assert.equal(b.run('state.currentCosts.solar'),900);assert.equal(b.run('state.batteryKwh'),100);assert.equal(b.win.document.getElementById('btn-transformer').disabled,true);
+ b.run("selectedSettings.mode='offgrid';startGame()");assert.equal(b.run('state.currentCosts.solar'),900);assert.equal(b.run('state.batteryKwh'),100);assert.equal(b.win.document.getElementById('btn-transformer').disabled,true);assert.equal(b.win.document.getElementById('btn-transformer').classList.contains('hidden'),true);
  b.run("selectedSettings.mode='inflation';startGame()");assert.equal(b.run('CONFIG.inflationRate'),1.5);b.run('startLevelGame(2)');assert.equal(b.run('CONFIG.inflationRate'),1.1);assert.equal(b.win.document.getElementById('btn-slow').disabled,false);b.close();
 });
 
 test('fresh tutorial starts with one slow charger and only two purchasing options',()=>{
- const b=boot();b.run('startLevelGame(1)');assert.equal(b.run('state.assets.slowCharger'),1);assert.equal(b.run('state.assets.transformer'),0);assert.equal(b.run('state.targetDays'),28);b.run('career.unlocks=TECHNOLOGIES.map(t=>t.key)');
+ const b=boot();b.run('startLevelGame(1)');assert.equal(b.run('state.assets.slowCharger'),1);assert.equal(b.run('state.assets.transformer'),0);assert.equal(b.run('state.targetDays'),28);assert.equal(b.win.document.querySelectorAll('.asset-button:not(.hidden)').length,2);assert.equal(b.win.document.getElementById('btn-bank-details').classList.contains('hidden'),true);assert.equal(b.win.document.getElementById('card-loan-status').classList.contains('hidden'),true);b.run('career.unlocks=TECHNOLOGIES.map(t=>t.key)');
  for(const key of ['marketing','fastCharger','solar','battery','bank'])assert.equal(b.run(`technologyAvailable('${key}')`),false);
  b.run("state.money=100000;buyAsset('marketing');buyAsset('fastCharger');buyAsset('solar');buyAsset('battery');openLoanModal();updateLoanPreview();takeLoan()");assert.equal(b.run('state.money'),100000);assert.equal(b.run('state.loan.active'),false);assert.equal(b.run('state.marketingPurchases||0'),0);assert.equal(b.win.document.getElementById('research-modal').classList.contains('hidden'),false);b.close();
 });

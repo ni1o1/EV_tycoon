@@ -79,10 +79,10 @@ test('cash and every multi-part goal remain legible on a small phone',async({pag
  }
 });
 
-test('tutorial exposes locked devices and achievement progress without hiding energy or costs',async({page})=>{
+test('tutorial hides locked purchases while keeping achievement progress and energy costs accessible',async({page})=>{
  await page.setViewportSize({width:320,height:568});await page.goto('/');await page.evaluate(()=>startLevelGame(1));
- for(const id of ['btn-fast','btn-solar','btn-battery','btn-marketing']){await expect(page.locator('#'+id)).toBeVisible();await expect(page.locator('#'+id)).toBeDisabled()}
- await expect(page.locator('#btn-loan')).toHaveText('银行 🔒');await page.locator('#btn-loan').click();await expect(page.locator('#research-modal')).toBeVisible();await expect(page.locator('#loan-modal')).toBeHidden();await page.getByRole('button',{name:'关闭技术与成就',exact:true}).click();
- await page.evaluate(()=>{state.day=15;state.served=10;state.totalEnergy=800;checkTechnologyUnlocks();updateUI()});await expect(page.locator('#btn-fast .asset-state')).toHaveText('购买 +');await expect(page.locator('#station-live')).toContainText('光伏');await assertSingleScreen(page,true);
+ for(const id of ['btn-fast','btn-solar','btn-battery','btn-marketing'])await expect(page.locator('#'+id)).toBeHidden();
+ await expect(page.locator('#btn-loan')).toBeHidden();await page.locator('#station-live').click();await expect(page.locator('#research-modal')).toBeVisible();await expect(page.locator('#loan-modal')).toBeHidden();await page.getByRole('button',{name:'关闭技术与成就',exact:true}).click();
+ await page.evaluate(()=>{state.day=15;state.served=10;state.totalEnergy=800;checkTechnologyUnlocks();updateUI()});await expect(page.locator('#btn-fast')).toBeVisible();await expect(page.locator('#btn-fast .asset-state')).toHaveText('购买 +');await expect(page.locator('#station-live')).toContainText('光伏');await assertSingleScreen(page,true);
  await page.locator('#station-live').click();await expect(page.locator('.research-row')).toHaveCount(5);await page.getByRole('button',{name:'关闭技术与成就',exact:true}).click();await assertSingleScreen(page,true);
 });

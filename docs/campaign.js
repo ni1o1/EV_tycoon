@@ -296,7 +296,8 @@ function updateDashboard() {
     for (const [key, id] of Object.entries(ids)) {
         const btn = document.getElementById('btn-' + id);
         const restricted = purchaseRestriction(key);
-        btn.disabled = restricted || state.money < getAssetCost(key);
+        btn.disabled = Boolean(restricted) || state.money < getAssetCost(key);
+        btn.classList.toggle('hidden', Boolean(restricted));
         btn.title = restricted ? (TECHNOLOGIES.find(t=>t.key===key)?.requirement || restricted) : state.money < getAssetCost(key) ? '资金不足' : `购买后每日维护增加 $${CONFIG.dailyCost[key] || 0}`;
         btn.querySelector('.asset-state').textContent = restricted ? restricted : state.money < getAssetCost(key) ? '资金不足' : '购买 +';
     }
@@ -304,6 +305,17 @@ function updateDashboard() {
     document.getElementById('btn-loan').textContent = technologyAvailable('bank') ? '银行' : '银行 🔒';
     document.getElementById('btn-loan').title = technologyAvailable('bank') ? '借款与还款计划' : '营业35天，充满80辆车后解锁';
     document.getElementById('card-loan-status').disabled = false;
+    const bankAvailable = technologyAvailable('bank');
+    const loanButton = document.getElementById('btn-loan');
+    const loanCard = document.getElementById('card-loan-status');
+    const bankDetails = document.getElementById('btn-bank-details');
+    loanButton.classList.toggle('hidden', bankAvailable === false);
+    loanCard.classList.toggle('hidden', bankAvailable === false);
+    if (bankDetails) bankDetails.classList.toggle('hidden', bankAvailable === false);
+    const statsBar = document.querySelector('.operating-stats');
+    if (statsBar) statsBar.style.gridTemplateColumns = bankAvailable === false ? 'repeat(3,minmax(0,1fr))' : '';
+    const detailGrid = document.querySelector('#finance-view .detail-grid');
+    if (detailGrid) detailGrid.style.gridTemplateColumns = bankAvailable === false ? '1fr' : '';
     if(!technologyAvailable('bank'))document.getElementById('ui-loan-payment').textContent='未解锁';
     document.getElementById('mission-detail').textContent = mission ? `${mission.detail} 净资金＝余额减未还贷款本金；通关一星，净资金 $${mission.stars[0].toLocaleString('en-US')} 两星，$${mission.stars[1].toLocaleString('en-US')} 三星。` : '按自己的节奏投资，体验不同城市、地段与挑战模式。';
     const speeds = { '0': 0, '1': 500, '4': 125, '8': 62.5 };
